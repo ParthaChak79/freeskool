@@ -1,8 +1,13 @@
 """Wraps SerpApi engine=youtube_video. Returns full metadata for a video ID."""
+from cache.db import get_cached_video_details, set_cached_video_details
 from fetcher._client import serpapi_get
 
 
 def get_video_details(video_id: str) -> dict:
+    cached = get_cached_video_details(video_id)
+    if cached is not None:
+        return cached
+
     data = serpapi_get({"engine": "youtube_video", "v": video_id})
     channel = data.get("channel") or {}
     transcript = data.get("transcript") or {}
@@ -10,7 +15,7 @@ def get_video_details(video_id: str) -> dict:
     # unlike the plain string returned in engine=youtube's video_results.
     description = data.get("description")
     description_text = description.get("content", "") if isinstance(description, dict) else (description or "")
-    return {
+    result = {
         "video_id": video_id,
         "title": data.get("title", ""),
         "channel_name": channel.get("name", ""),
@@ -28,3 +33,5 @@ def get_video_details(video_id: str) -> dict:
         "related_videos": data.get("related_videos", []),
         "transcript_link": transcript.get("serpapi_link", ""),
     }
+    set_cached_video_details(video_id, result)
+    return result

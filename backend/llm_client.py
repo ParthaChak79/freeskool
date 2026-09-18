@@ -1,4 +1,4 @@
-"""Shared Groq call + retry + JSON-parsing, used by scorer/llm_scorer.py and
+"""Shared Gemini call + retry + JSON-parsing, used by scorer/llm_scorer.py and
 learning_path/decomposer.py + path_ranker.py — the same rate-limit/parsing
 logic was getting duplicated across all three LLM call sites."""
 import json
@@ -13,7 +13,7 @@ import config
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SEC = 5
 
-_client = openai.OpenAI(api_key=config.GROQ_API_KEY, base_url=config.GROQ_BASE_URL)
+_client = openai.OpenAI(api_key=config.GEMINI_API_KEY, base_url=config.GEMINI_BASE_URL)
 
 
 def call_json(prompt: str, max_tokens: int) -> dict | list:
@@ -21,9 +21,15 @@ def call_json(prompt: str, max_tokens: int) -> dict | list:
     while True:
         try:
             response = _client.chat.completions.create(
-                model=config.GROQ_MODEL,
+                model=config.GEMINI_MODEL,
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
+                # Gemini 3's hidden "thinking" tokens count against max_tokens
+                # and left responses truncated to empty at this task's budgets
+                # (confirmed live: finish_reason="length" with 0 visible
+                # completion tokens). This is straightforward rubric-applying
+                # JSON output, not a task that benefits from deep reasoning.
+                reasoning_effort="minimal",
             )
             break
         except openai.APIStatusError as e:

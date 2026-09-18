@@ -24,9 +24,14 @@ def _connect() -> sqlite3.Connection:
             video_id TEXT PRIMARY KEY,
             transcript_text TEXT,
             llm_score_json TEXT,
+            video_details_json TEXT,
             cached_at REAL NOT NULL
         )
     """)
+    # Migration for DBs created before video_details_json existed.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(video_cache)").fetchall()}
+    if "video_details_json" not in cols:
+        conn.execute("ALTER TABLE video_cache ADD COLUMN video_details_json TEXT")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS path_cache (
             cache_key TEXT PRIMARY KEY,
@@ -86,6 +91,31 @@ def set_cached_score(video_id: str, score: dict) -> None:
             INSERT INTO video_cache (video_id, llm_score_json, cached_at) VALUES (?, ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET llm_score_json = excluded.llm_score_json, cached_at = excluded.cached_at
         """, (video_id, json.dumps(score), time.time()))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_cached_video_details(video_id: str) -> dict | None:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT video_details_json, cached_at FROM video_cache WHERE video_id = ?", (video_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] is None or not _is_fresh(row[1]):
+        return None
+    return json.loads(row[0])
+
+
+def set_cached_video_details(video_id: str, details: dict) -> None:
+    conn = _connect()
+    try:
+        conn.execute("""
+            INSERT INTO video_cache (video_id, video_details_json, cached_at) VALUES (?, ?, ?)
+            ON CONFLICT(video_id) DO UPDATE SET video_details_json = excluded.video_details_json, cached_at = excluded.cached_at
+        """, (video_id, json.dumps(details), time.time()))
         conn.commit()
     finally:
         conn.close()

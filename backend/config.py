@@ -12,7 +12,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 CACHE_TTL_DAYS = _int_env("CACHE_TTL_DAYS", 30)
 MAX_CANDIDATES = _int_env("MAX_CANDIDATES", 15)
@@ -23,11 +23,15 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "chrome-extension://YOUR_EXT_ID")
 
 # LLM model used for content scoring, topic decomposition, and path assembly.
-# Served via Groq's OpenAI-compatible API (https://api.groq.com/openai/v1).
-# instructions.md originally specified claude-sonnet-4-6 (Anthropic); provider
-# switched to Groq for speed/cost — see README for rationale.
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+# Served via Gemini's OpenAI-compatible endpoint. instructions.md originally
+# specified claude-sonnet-4-6 (Anthropic); switched to Groq, then to Gemini
+# after Groq's free-tier 8000 TPM cap made the spec's batch size unusable —
+# see README for the full provider history and rationale.
+# gemini-2.5-flash (docs' recommendation at swap time) 404s live: "no longer
+# available to new users... use models/gemini-3.6-flash" — using the model
+# the live API itself named over the static docs.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 SERPAPI_BASE_URL = "https://serpapi.com/search"
 
@@ -59,7 +63,7 @@ def require_api_keys() -> None:
     missing = []
     if not SERPAPI_API_KEY:
         missing.append("SERPAPI_API_KEY")
-    if not GROQ_API_KEY:
-        missing.append("GROQ_API_KEY")
+    if not GEMINI_API_KEY:
+        missing.append("GEMINI_API_KEY")
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")

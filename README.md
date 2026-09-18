@@ -17,7 +17,7 @@ Create `backend/.env` (already gitignored):
 
 ```
 SERPAPI_API_KEY=your_serpapi_key
-GROQ_API_KEY=your_groq_key
+GEMINI_API_KEY=your_gemini_key
 CACHE_TTL_DAYS=30
 MAX_CANDIDATES=15
 MAX_TRANSCRIPT_TOKENS=4000
@@ -26,7 +26,7 @@ BACKEND_URL=http://localhost:8000
 ALLOWED_ORIGINS=chrome-extension://YOUR_EXT_ID
 ```
 
-Get a SerpApi key at [serpapi.com](https://serpapi.com) and a Groq key at [console.groq.com](https://console.groq.com/keys).
+Get a SerpApi key at [serpapi.com](https://serpapi.com) and a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
 Run it:
 
@@ -49,17 +49,17 @@ curl -X POST http://localhost:8000/search \
 3. Click the extension icon → Settings, set "Backend URL" to wherever your backend is running (defaults to `http://localhost:8000`).
 4. Search anything on youtube.com — the sidebar appears on the results page.
 
-No API keys ever live in the extension — all SerpApi and Groq calls are server-side only, per instructions.md's Key Extension Constraints.
+No API keys ever live in the extension — all SerpApi and Gemini calls are server-side only, per instructions.md's Key Extension Constraints.
 
 ## Data source: SerpApi, not YouTube Data API v3
 
 The original spec targeted YouTube Data API v3 plus the unofficial `youtube-transcript-api` scraper library. This build uses **SerpApi exclusively** — `engine=youtube` (search), `engine=youtube_video` (video detail), `engine=youtube_video_transcript` (transcripts, replacing the scraper entirely), and `engine=youtube_channel` (channel authority signals). No YouTube Data API v3 calls, no scraping.
 
-## LLM provider: Groq, not Anthropic
+## LLM provider: Gemini (previously Anthropic, then Groq)
 
-instructions.md originally specified Anthropic (`claude-sonnet-4-6`, itself a stale model string). This build was later switched to **Groq** (`openai/gpt-oss-120b`, served via Groq's OpenAI-compatible API), chosen over `llama-3.3-70b-versatile` for its documented reasoning capability plus higher throughput (500 t/s), and over the smaller `gpt-oss-20b`/`llama-3.1-8b-instant` models for better judgment quality on nuanced scoring (content quality, skill-level detection, subtopic extraction). Prompt wording, batch size (5 transcripts/call), and truncation limits are unchanged from the original spec.
+instructions.md originally specified Anthropic (`claude-sonnet-4-6`, itself a stale model string). The build was switched to Groq (`openai/gpt-oss-120b`) for speed/cost, then switched again to **Gemini** (`gemini-2.5-flash`, served via Gemini's OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai/`) after Groq's free/on-demand tier's 8,000 tokens/minute cap made the spec's batch size (5 candidates × up to 4,000 tokens each) structurally impossible to run — a single full batch requested ~13,000+ tokens, over the cap, and retrying doesn't help since it's a single-request ceiling, not a burst limit that clears with time. `gemini-2.5-flash` was chosen per Google's own docs describing it as the best price-performance option for reasoning tasks (vs. the `flash-lite` variants built for raw speed over reasoning depth, or `gemini-3.8-flash`/`2.5-pro` which cost more for reasoning this task doesn't need). Prompt wording, batch size, and truncation limits are unchanged from the original spec — this was a provider swap only, same as the Anthropic→Groq switch before it.
 
-**Known limitation:** Groq's free/on-demand tier caps `openai/gpt-oss-120b` at 8,000 tokens/minute. A single full batch of 5 candidates at the spec's 4,000-token-per-video truncation requests ~13,000+ tokens — over the cap, and retrying doesn't help since it's a single-request ceiling, not a burst limit. Running the batching spec at full scale requires Groq's Dev Tier or higher. Bounded retry-with-backoff (`llm_client.py`) is implemented for the *different* case of several smaller calls cumulatively exceeding the budget in a short window, but does not fix the oversized-single-batch case.
+**Rate limits are unverified as of this swap** — Gemini's free-tier RPM/TPM/RPD limits aren't published in static docs (Google's docs point to a per-account dashboard at [aistudio.google.com/rate-limit](https://aistudio.google.com/rate-limit)), so whether the full 5-candidate batch fits Gemini's free tier hasn't been confirmed the way Groq's failure was. Treat this the same as the original Groq integration: unverified until tested against a real batch.
 
 ## Phase 0 finding: playlist filtering
 
@@ -94,7 +94,7 @@ youtube-tutorial-finder/
 └── backend/                 # FastAPI backend
     ├── main.py               # /search endpoint, Best Pick + Learning Path orchestration
     ├── config.py
-    ├── llm_client.py          # shared Groq call/retry/JSON-parse logic
+    ├── llm_client.py          # shared Gemini call/retry/JSON-parse logic
     ├── fetcher/                # SerpApi wrappers
     ├── scorer/                 # metadata pre-filter, batched LLM scoring, shared formulas
     ├── ranker/                 # weighted final scoring
@@ -104,4 +104,4 @@ youtube-tutorial-finder/
 
 ## Testing notes
 
-Backend phases were tested against live SerpApi/Groq calls throughout development (see conversation history for specifics per phase). The Chrome extension's rendering logic was verified with a jsdom smoke test against realistic backend response shapes, but **has not been visually tested in a real Chrome browser against live youtube.com** — load it unpacked and try a real search before trusting the UI is polished, per the "Load Unpacked" steps above.
+Backend phases were tested against live SerpApi and Groq calls throughout development (see conversation history for specifics per phase); the Gemini swap has not yet been verified against a real search end-to-end. The Chrome extension's rendering logic was verified with a jsdom smoke test against realistic backend response shapes, but **has not been visually tested in a real Chrome browser against live youtube.com** — load it unpacked and try a real search before trusting the UI is polished, per the "Load Unpacked" steps above.
