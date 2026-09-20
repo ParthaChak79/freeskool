@@ -5,11 +5,16 @@
   const SIDEBAR_ID = "ytf-sidebar";
   const LEVELS = ["all", "beginner", "intermediate", "advanced"];
 
+  const MIN_FETCH_INTERVAL_MS = 5000; // hard cap: never fetch more than once per 5s,
+                                       // regardless of how many change events fire
+
   const state = {
     query: null,
     mode: "best_pick",
     level: "all",
     cache: {}, // `${mode}::${level}::${query}` -> response data
+    loading: false,
+    lastFetchAt: 0,
   };
 
   function getSearchQuery() {
@@ -230,6 +235,15 @@
       return;
     }
 
+    // Each backend call costs real SerpApi/LLM credits — these two guards are
+    // a hard stop against ever firing overlapping or rapid-fire requests, no
+    // matter how many "the query changed" signals arrive in quick succession.
+    if (state.loading) return;
+    const now = Date.now();
+    if (now - state.lastFetchAt < MIN_FETCH_INTERVAL_MS) return;
+
+    state.loading = true;
+    state.lastFetchAt = now;
     renderLoading(content);
     try {
       const data = await sendSearch(state.query, state.mode, state.level);
@@ -237,6 +251,8 @@
       state.mode === "best_pick" ? renderBestPick(content, data) : renderLearningPath(content, data);
     } catch (err) {
       renderError(content, err.message || String(err));
+    } finally {
+      state.loading = false;
     }
   }
 
@@ -254,11 +270,12 @@
 
     // YouTube is a single-page app; navigating between searches doesn't
     // always reload the page. yt-navigate-finish is YouTube's own SPA nav
-    // event, with a polling fallback since that event name isn't a stable
-    // public API and YouTube's frontend can change without notice.
+    // event. No polling fallback — a blind interval risks re-fetching (and
+    // re-spending API credits) if the URL is ever rewritten without a real
+    // query change; the loading/min-interval guards above are the actual
+    // safety net now, not a timer.
     document.addEventListener("yt-navigate-finish", onQueryChange);
     window.addEventListener("popstate", onQueryChange);
-    setInterval(onQueryChange, 1500);
   }
 
   if (document.readyState === "loading") {
