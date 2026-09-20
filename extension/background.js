@@ -37,6 +37,16 @@ async function openTabsSequentially(urls) {
   }
 }
 
+// content_script.js opens one of these for the duration of each search. An
+// open port keeps this service worker alive past Chrome's idle-termination
+// timeout, which a long Learning Path request (decompose + up to 10
+// subtopic searches + scoring) can otherwise exceed. No messages need to
+// flow over it — the connection itself is what matters.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "keepalive") return;
+  port.onDisconnect.addListener(() => {});
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "SEARCH") {
     runSearch(message.query, message.mode, message.level)

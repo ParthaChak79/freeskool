@@ -7,6 +7,10 @@
 
   const MIN_FETCH_INTERVAL_MS = 5000; // hard cap: never fetch more than once per 5s,
                                        // regardless of how many change events fire
+  const SEARCH_TIMEOUT_MS = 120000; // Learning Path can legitimately take over a
+                                     // minute (decompose + up to 10 subtopic searches
+                                     // + scoring); never leave the skeleton spinning
+                                     // forever with no feedback
 
   const state = {
     query: null,
@@ -27,7 +31,25 @@
 
   function sendSearch(query, mode, level) {
     return new Promise((resolve, reject) => {
+      // Keeps the MV3 service worker alive for the duration of a potentially
+      // long-running search — background.js can otherwise be terminated by
+      // Chrome mid-request (idle timeout), silently breaking the response
+      // path and leaving the sidebar stuck on the loading skeleton forever.
+      const keepAlivePort = chrome.runtime.connect({ name: "keepalive" });
+      let settled = false;
+
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        keepAlivePort.disconnect();
+        reject(new Error(`Search timed out after ${SEARCH_TIMEOUT_MS / 1000}s`));
+      }, SEARCH_TIMEOUT_MS);
+
       chrome.runtime.sendMessage({ type: "SEARCH", query, mode, level }, (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        keepAlivePort.disconnect();
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
           return;
