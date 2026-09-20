@@ -66,6 +66,14 @@ EXPECTED_PLAYLIST_SIZE = 15
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search
 GAP_SCORE_THRESHOLD = 6  # score < 6 -> flag subtopic as a gap rather than pad with a weak result
 
+# Per-candidate/per-subtopic SerpApi fetches (transcript, video_details,
+# subtopic search) were all sequential loops - a full 15-candidate Best Pick
+# run confirmed live to take 90+ seconds this way. These are independent I/O
+# calls, so a thread pool gives real concurrency despite the GIL (released
+# during network waits). Kept modest rather than maximal to avoid tripping
+# SerpApi's own (undocumented) concurrent-request limits.
+FETCH_CONCURRENCY = _int_env("FETCH_CONCURRENCY", 5)
+
 def require_api_keys() -> None:
     missing = []
     if not SERPAPI_API_KEY:

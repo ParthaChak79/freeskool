@@ -6,6 +6,8 @@ to sum to 1 — instructions.md doesn't specify this case, but Known Limitations
 says such candidates should get "a metadata-only score with a flag" rather
 than being dropped, so ranking has to define what that score is.
 """
+from concurrent.futures import ThreadPoolExecutor
+
 import config
 from fetcher.video_details import get_video_details
 from scorer.formulas import (
@@ -103,12 +105,17 @@ def _combine(candidate: dict, weights: dict, components: dict, llm_score: dict |
 def rank_candidates(candidates: list[dict], llm_results: dict[str, dict]) -> list[dict]:
     """Enriches candidates with SerpApi detail-fetches, computes final_score
     per instructions.md's weighted formulas, and returns them sorted desc."""
-    enriched = []
-    for c in candidates:
+    def _enrich_one(c: dict) -> dict:
         cid = c["video_id"] if c["type"] == "video" else c["playlist_id"]
         e = _enrich_video(c) if c["type"] == "video" else _enrich_playlist(c)
         e["_id"] = cid
-        enriched.append(e)
+        return e
+
+    # Each of these does its own get_video_details() SerpApi call(s) — same
+    # sequential-loop-of-independent-I/O problem as llm_scorer.py's transcript
+    # fetches, same fix.
+    with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
+        enriched = list(executor.map(_enrich_one, candidates))
 
     video_views = [e["extracted_views"] for e in enriched if e["type"] == "video"]
     playlist_views = [e["avg_views"] for e in enriched if e["type"] == "playlist"]

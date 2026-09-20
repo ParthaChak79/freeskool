@@ -2,6 +2,8 @@
 exactly as specified (batch size 5, one JSON array per call), sourced from
 Phase 2's transcript.py instead of a scraped transcript library.
 """
+from concurrent.futures import ThreadPoolExecutor
+
 import config
 from cache.db import get_cached_score, set_cached_score
 from fetcher.transcript import get_transcript, truncate_to_tokens
@@ -76,28 +78,41 @@ def score_candidates(topic: str, candidates: list[dict]) -> dict[str, dict]:
     so this trades some cross-topic accuracy for the cost savings the spec
     calls for. Worth knowing if scores look stale for a reused video.
     """
-    scorable: list[tuple[str, str]] = []
     results: dict[str, dict] = {}
+    to_fetch: list[dict] = []
 
     for c in candidates:
         cid = _candidate_id(c)
         cached = get_cached_score(cid)
         if cached is not None:
             results[cid] = cached
-            continue
+        else:
+            to_fetch.append(c)
 
+    def _fetch_block(c: dict) -> tuple[str, str | None]:
+        cid = _candidate_id(c)
         block = (
             _build_video_transcript_block(cid)
             if c["type"] == "video"
             else _build_playlist_transcript_block(c)
         )
-        if block is None:
-            results[cid] = {
-                "id": cid, "score": None, "level": None, "covers_topic": None,
-                "subtopics_covered": [], "summary": "", "flag": NO_TRANSCRIPT_FLAG,
-            }
-        else:
-            scorable.append((cid, block))
+        return cid, block
+
+    # Transcript fetches are independent SerpApi calls per candidate — this
+    # was a sequential loop and a full 15-candidate run confirmed live to
+    # take 90+ seconds. Threaded because these are I/O-bound (GIL releases
+    # during the network wait).
+    scorable: list[tuple[str, str]] = []
+    if to_fetch:
+        with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
+            for cid, block in executor.map(_fetch_block, to_fetch):
+                if block is None:
+                    results[cid] = {
+                        "id": cid, "score": None, "level": None, "covers_topic": None,
+                        "subtopics_covered": [], "summary": "", "flag": NO_TRANSCRIPT_FLAG,
+                    }
+                else:
+                    scorable.append((cid, block))
 
     for i in range(0, len(scorable), BATCH_SIZE):
         batch = scorable[i:i + BATCH_SIZE]
