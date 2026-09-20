@@ -17,7 +17,14 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 CACHE_TTL_DAYS = _int_env("CACHE_TTL_DAYS", 30)
 MAX_CANDIDATES = _int_env("MAX_CANDIDATES", 15)
 MAX_TRANSCRIPT_TOKENS = _int_env("MAX_TRANSCRIPT_TOKENS", 4000)
-PLAYLIST_TRANSCRIPT_VIDEOS = _int_env("PLAYLIST_TRANSCRIPT_VIDEOS", 3)
+# instructions.md's default (3) already exceeds what SerpApi provides (2, see
+# MAX_PLAYLIST_PREVIEW_VIDEOS below). Reduced further to 1: each playlist
+# episode costs 2 SerpApi calls (transcript + video_details), so a playlist
+# candidate was costing 2x a video candidate. Episode 2 only "confirms depth"
+# per instructions.md's own reasoning — losing it is a smaller quality hit
+# than either dropping playlists entirely or shrinking MAX_CANDIDATES, which
+# would reduce every search's candidate pool, not just playlists.
+PLAYLIST_TRANSCRIPT_VIDEOS = _int_env("PLAYLIST_TRANSCRIPT_VIDEOS", 1)
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "chrome-extension://YOUR_EXT_ID")
