@@ -1,11 +1,13 @@
 from typing import Literal, Optional
 
+import openai
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import config
 from cache.db import get_cached_path, path_cache_key, set_cached_path
+from fetcher._client import SerpApiError, SerpApiQuotaExceededError
 from fetcher.youtube_search import search_youtube
 from learning_path.assembler import assemble_path
 from learning_path.decomposer import decompose_topic
@@ -171,7 +173,13 @@ def search(req: SearchRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="query must not be empty")
 
-    if req.mode == "best_pick":
-        return run_best_pick(req.query, req.level or "all")
-
-    return run_learning_path(req.query, req.level or "all")
+    try:
+        if req.mode == "best_pick":
+            return run_best_pick(req.query, req.level or "all")
+        return run_learning_path(req.query, req.level or "all")
+    except SerpApiQuotaExceededError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except SerpApiError as e:
+        raise HTTPException(status_code=502, detail=f"SerpApi error: {e}") from e
+    except openai.APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"LLM provider error: {e}") from e

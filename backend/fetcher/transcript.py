@@ -2,7 +2,7 @@
 import re
 
 from cache.db import get_cached_transcript, set_cached_transcript
-from fetcher._client import SerpApiError, serpapi_get
+from fetcher._client import SerpApiError, SerpApiQuotaExceededError, serpapi_get
 
 FILLER_PATTERN = re.compile(r"\b(um+|uh+|you know|like)\b", re.IGNORECASE)
 WHITESPACE_PATTERN = re.compile(r"\s+")
@@ -39,6 +39,8 @@ def get_transcript(video_id: str, language_code: str = "en", type_: str | None =
         params["type"] = type_
     try:
         data = serpapi_get(params)
+    except SerpApiQuotaExceededError:
+        raise  # hard failure — must propagate, never masked as "no transcript"
     except SerpApiError:
         # No transcript in the requested language (disabled captions, non-English,
         # etc.) is an expected outcome per instructions.md's Known Limitations,

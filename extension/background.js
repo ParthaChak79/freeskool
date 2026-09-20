@@ -16,8 +16,17 @@ async function runSearch(query, mode, level) {
     body: JSON.stringify({ query, mode, level }),
   });
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Backend returned ${res.status}: ${detail}`);
+    const raw = await res.text().catch(() => "");
+    let detail = raw;
+    try {
+      // FastAPI's HTTPException body is {"detail": "..."} — show that message
+      // directly instead of the raw JSON blob when present.
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.detail === "string") detail = parsed.detail;
+    } catch {
+      // not JSON, fall back to the raw text as-is
+    }
+    throw new Error(detail || `Backend returned ${res.status}`);
   }
   return res.json();
 }
