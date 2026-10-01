@@ -18,15 +18,18 @@ Create `backend/.env` (already gitignored):
 ```
 SERPAPI_API_KEY=your_serpapi_key
 GEMINI_API_KEY=your_gemini_key
+JEV_API_KEY=                        # optional — see "Relevance pre-filter" below
 CACHE_TTL_DAYS=30
 MAX_CANDIDATES=15
 MAX_TRANSCRIPT_TOKENS=4000
-PLAYLIST_TRANSCRIPT_VIDEOS=3
+PLAYLIST_TRANSCRIPT_VIDEOS=1
+FETCH_CONCURRENCY=5
+RELEVANCE_GATE_KEEP_N=8
 BACKEND_URL=http://localhost:8000
 ALLOWED_ORIGINS=chrome-extension://YOUR_EXT_ID
 ```
 
-Get a SerpApi key at [serpapi.com](https://serpapi.com) and a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+Get a SerpApi key at [serpapi.com](https://serpapi.com) and a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). `JEV_API_KEY` is optional (see below) — leave it blank and that feature is simply disabled.
 
 Run it:
 
@@ -57,9 +60,17 @@ The original spec targeted YouTube Data API v3 plus the unofficial `youtube-tran
 
 ## LLM provider: Gemini (previously Anthropic, then Groq)
 
-instructions.md originally specified Anthropic (`claude-sonnet-4-6`, itself a stale model string). The build was switched to Groq (`openai/gpt-oss-120b`) for speed/cost, then switched again to **Gemini** (`gemini-2.5-flash`, served via Gemini's OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai/`) after Groq's free/on-demand tier's 8,000 tokens/minute cap made the spec's batch size (5 candidates × up to 4,000 tokens each) structurally impossible to run — a single full batch requested ~13,000+ tokens, over the cap, and retrying doesn't help since it's a single-request ceiling, not a burst limit that clears with time. `gemini-2.5-flash` was chosen per Google's own docs describing it as the best price-performance option for reasoning tasks (vs. the `flash-lite` variants built for raw speed over reasoning depth, or `gemini-3.8-flash`/`2.5-pro` which cost more for reasoning this task doesn't need). Prompt wording, batch size, and truncation limits are unchanged from the original spec — this was a provider swap only, same as the Anthropic→Groq switch before it.
+instructions.md originally specified Anthropic (`claude-sonnet-4-6`, itself a stale model string). The build was switched to Groq (`openai/gpt-oss-120b`) for speed/cost, then switched again to **Gemini**, served via Gemini's OpenAI-compatible endpoint at `https://generativelanguage.googleapis.com/v1beta/openai/`, after Groq's free/on-demand tier's 8,000 tokens/minute cap made the spec's batch size (5 candidates × up to 4,000 tokens each) structurally impossible to run — a single full batch requested ~13,000+ tokens, over the cap, and retrying doesn't help since it's a single-request ceiling, not a burst limit that clears with time. `gemini-2.5-flash` (Google's own docs' recommendation at swap time, as the best price-performance option for reasoning tasks) 404s live for new accounts — the API's own error message pointed to `gemini-3.6-flash` instead, which is what's actually configured (`config.GEMINI_MODEL`). Gemini 3's models also default to hidden "thinking" tokens that count against `max_tokens` and were silently truncating responses to empty at this task's budgets — `reasoning_effort="minimal"` is passed on every call to disable that, since this is straightforward rubric-applying JSON output, not a task needing deep reasoning. Prompt wording, batch size, and truncation limits are otherwise unchanged from the original spec.
 
-**Rate limits are unverified as of this swap** — Gemini's free-tier RPM/TPM/RPD limits aren't published in static docs (Google's docs point to a per-account dashboard at [aistudio.google.com/rate-limit](https://aistudio.google.com/rate-limit)), so whether the full 5-candidate batch fits Gemini's free tier hasn't been confirmed the way Groq's failure was. Treat this the same as the original Groq integration: unverified until tested against a real batch.
+Rate-limit verification: the exact batch shape that broke Groq (5 candidates × ~4000 tokens) was replayed against Gemini with synthetic text and succeeded in ~5s — confirmed, not assumed.
+
+## Relevance pre-filter: Jev (optional)
+
+An optional extra layer, added after the pipeline was confirmed working: [Jev](https://console.typesafe.ai), TypeSafe AI's "System One" decision model, sits between the metadata pre-filter and transcript fetching (`scorer/relevance_gate.py`). Unlike a typical LLM, Jev doesn't generate text — it takes a text "state" and answers typed questions about it (here, a `noul` question: a 0–1 probability). Each pre-filtered candidate's *free* metadata (title/description/channel, already in hand from the initial search — no SerpApi cost) is scored for relevance to the search topic, and only the top `RELEVANCE_GATE_KEEP_N` (default 8) proceed to transcript/`video_details` fetching.
+
+This is the one piece of this pipeline that actually reduces SerpApi spend rather than just LLM spend — transcript and video-details calls are what cost SerpApi credits, and narrowing 15 candidates down to 8 before those calls happen cuts them roughly in half. Running a relevance check *after* transcripts are already fetched (e.g. alongside the Gemini content scorer) wouldn't save anything, since the SerpApi cost is already sunk by that point — that's why this sits where it does in the pipeline, not later.
+
+Entirely optional: `filter_by_relevance()` is a no-op (returns candidates unchanged) if `JEV_API_KEY` isn't set, so the app runs the same as before with it blank. Fails open on a per-candidate basis too — if a single Jev call errors, that candidate gets a neutral score rather than being dropped or crashing the whole request.
 
 ## Phase 0 finding: playlist filtering
 

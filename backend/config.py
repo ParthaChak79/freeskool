@@ -74,6 +74,18 @@ GAP_SCORE_THRESHOLD = 6  # score < 6 -> flag subtopic as a gap rather than pad w
 # SerpApi's own (undocumented) concurrent-request limits.
 FETCH_CONCURRENCY = _int_env("FETCH_CONCURRENCY", 5)
 
+# Optional relevance pre-filter (Jev, TypeSafe AI's "System One" decision
+# model) between the metadata pre-filter and transcript fetching. Evaluates
+# each candidate's free title/description/channel metadata against the
+# search topic and keeps only the top N by relevance *before* any SerpApi
+# transcript/video_details calls happen — unlike running it alongside the
+# content scorer, this actually reduces SerpApi spend, not just LLM spend.
+# Optional: unset JEV_API_KEY disables the gate entirely (candidates pass
+# through unfiltered), so this isn't a hard dependency for the app to run.
+JEV_API_KEY = os.environ.get("JEV_API_KEY", "")
+JEV_BASE_URL = "https://api.typesafe.ai/v1/systemone"
+RELEVANCE_GATE_KEEP_N = _int_env("RELEVANCE_GATE_KEEP_N", 8)
+
 def require_api_keys() -> None:
     missing = []
     if not SERPAPI_API_KEY:

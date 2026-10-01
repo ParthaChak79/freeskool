@@ -17,6 +17,7 @@ from ranker.rank import rank_candidates
 from scorer.formulas import estimate_playlist_duration_mins
 from scorer.llm_scorer import score_candidates
 from scorer.metadata_filter import prefilter_candidates
+from scorer.relevance_gate import filter_by_relevance
 
 app = FastAPI(title="YouTube Tutorial Finder API")
 
@@ -86,6 +87,11 @@ def run_best_pick(query: str, level: str) -> dict:
     if not prefiltered:
         return {"mode": "best_pick", "query": query, "level": level, "recommendation": None, "runners_up": []}
 
+    # Jev relevance gate (optional, no-op if JEV_API_KEY unset): narrows the
+    # pool using free metadata before any transcript/video_details SerpApi
+    # calls happen, so this actually cuts SerpApi spend, not just LLM spend.
+    prefiltered = filter_by_relevance(query, prefiltered)
+
     llm_results = score_candidates(query, prefiltered)
     ranked = rank_candidates(prefiltered, llm_results)
 
@@ -143,6 +149,9 @@ def run_learning_path(topic: str, level: str) -> dict:
 
     candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics)
     all_candidates = list(candidates_by_id.values())
+
+    # Same relevance gate as Best Pick — see run_best_pick's comment.
+    all_candidates = filter_by_relevance(topic, all_candidates)
 
     llm_results = score_candidates(topic, all_candidates)
     ranked = rank_candidates(all_candidates, llm_results)
