@@ -1,10 +1,13 @@
-"""Weighted final scoring — instructions.md's Video Score / Playlist Score
-formulas, exactly as written, sourced from SerpApi fields via Phase 2's
-fetchers. Candidates without an LLM score (no_transcript flag from Phase 4)
-fall back to a metadata-only score using the non-LLM components, renormalized
-to sum to 1 — instructions.md doesn't specify this case, but Known Limitations
-says such candidates should get "a metadata-only score with a flag" rather
-than being dropped, so ranking has to define what that score is.
+"""Weighted final scoring — instructions.md's Video Score formula, exactly as
+written, sourced from SerpApi fields via Phase 2's fetchers. Candidates
+without an LLM score (no_transcript flag from Phase 4) fall back to a
+metadata-only score using the non-LLM components, renormalized to sum to 1 —
+instructions.md doesn't specify this case, but Known Limitations says such
+candidates should get "a metadata-only score with a flag" rather than being
+dropped, so ranking has to define what that score is.
+
+Videos only — playlists are excluded from all modes, see
+fetcher/youtube_search.py's module docstring.
 """
 from concurrent.futures import ThreadPoolExecutor
 
@@ -18,7 +21,6 @@ from scorer.formulas import (
 )
 
 VIDEO_WEIGHTS = {"llm": 0.50, "views": 0.15, "like_ratio": 0.15, "recency": 0.10, "channel_authority": 0.10}
-PLAYLIST_WEIGHTS = {"llm": 0.55, "views": 0.10, "completeness": 0.20, "recency": 0.15}
 
 
 def _enrich_video(candidate: dict) -> dict:
@@ -34,22 +36,6 @@ def _enrich_video(candidate: dict) -> dict:
     }
 
 
-def _enrich_playlist(candidate: dict) -> dict:
-    n = min(config.PLAYLIST_TRANSCRIPT_VIDEOS, config.MAX_PLAYLIST_PREVIEW_VIDEOS)
-    episodes = candidate.get("preview_videos", [])[:n]
-    views, ages = [], []
-    for ep in episodes:
-        details = get_video_details(ep["video_id"])
-        if details["extracted_views"]:
-            views.append(details["extracted_views"])
-        age = parse_date_to_age_years(details["published_date"])
-        if age is not None:
-            ages.append(age)
-    avg_views = sum(views) / len(views) if views else 0
-    avg_age = sum(ages) / len(ages) if ages else None
-    return {**candidate, "avg_views": avg_views, "age_years": avg_age}
-
-
 def _score_video(candidate: dict, max_views: int, llm_score: dict | None) -> dict:
     like_ratio = 0.0
     if candidate["extracted_views"]:
@@ -62,16 +48,6 @@ def _score_video(candidate: dict, max_views: int, llm_score: dict | None) -> dic
         "channel_authority": channel_authority_score(candidate["extracted_subscribers"]),
     }
     return _combine(candidate, VIDEO_WEIGHTS, components, llm_score)
-
-
-def _score_playlist(candidate: dict, max_views: int, llm_score: dict | None) -> dict:
-    completeness = min((candidate.get("video_count") or 0) / config.EXPECTED_PLAYLIST_SIZE, 1.0)
-    components = {
-        "views": normalized_view_count(candidate["avg_views"], max_views),
-        "completeness": completeness,
-        "recency": recency_score(candidate["age_years"]),
-    }
-    return _combine(candidate, PLAYLIST_WEIGHTS, components, llm_score)
 
 
 def _combine(candidate: dict, weights: dict, components: dict, llm_score: dict | None) -> dict:
@@ -104,32 +80,24 @@ def _combine(candidate: dict, weights: dict, components: dict, llm_score: dict |
 
 def rank_candidates(candidates: list[dict], llm_results: dict[str, dict]) -> list[dict]:
     """Enriches candidates with SerpApi detail-fetches, computes final_score
-    per instructions.md's weighted formulas, and returns them sorted desc."""
+    per instructions.md's weighted formula, and returns them sorted desc."""
     def _enrich_one(c: dict) -> dict:
-        cid = c["video_id"] if c["type"] == "video" else c["playlist_id"]
-        e = _enrich_video(c) if c["type"] == "video" else _enrich_playlist(c)
-        e["_id"] = cid
+        e = _enrich_video(c)
+        e["_id"] = c["video_id"]
         return e
 
-    # Each of these does its own get_video_details() SerpApi call(s) — same
+    # Each of these does its own get_video_details() SerpApi call — same
     # sequential-loop-of-independent-I/O problem as llm_scorer.py's transcript
     # fetches, same fix.
     with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
         enriched = list(executor.map(_enrich_one, candidates))
 
-    video_views = [e["extracted_views"] for e in enriched if e["type"] == "video"]
-    playlist_views = [e["avg_views"] for e in enriched if e["type"] == "playlist"]
-    max_views = max(video_views + playlist_views, default=1)
+    max_views = max((e["extracted_views"] for e in enriched), default=1)
 
     scored = []
     for e in enriched:
         llm_score = llm_results.get(e["_id"])
-        result = (
-            _score_video(e, max_views, llm_score)
-            if e["type"] == "video"
-            else _score_playlist(e, max_views, llm_score)
-        )
-        scored.append(result)
+        scored.append(_score_video(e, max_views, llm_score))
 
     scored.sort(key=lambda r: r["score"], reverse=True)
     return scored

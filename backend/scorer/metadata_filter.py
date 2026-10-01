@@ -1,14 +1,10 @@
-"""Metadata pre-filter: duration/playlist-size/recency thresholds from
-instructions.md, sourced from SerpApi's youtube_search fetcher output.
-Keeps the top MAX_CANDIDATES by a lightweight metadata-only score, so only
-those go on to (paid) transcript fetching + LLM scoring in Phase 4.
+"""Metadata pre-filter: duration/recency thresholds from instructions.md,
+sourced from SerpApi's youtube_search fetcher output. Keeps the top
+MAX_CANDIDATES by a lightweight metadata-only score, so only those go on to
+(paid) transcript fetching + LLM scoring in Phase 4.
 
-Playlist recency is NOT filtered here: SerpApi's playlist_results carries no
-date field, and fetching engine=youtube_video per playlist just to get one
-just for a pre-filter cutoff would be wasted spend on candidates that might
-not survive anyway. Playlists are filtered on video_count only; recency is
-scored properly in Phase 5 using data Phase 4 already fetches for the
-survivors' preview episodes.
+Videos only — playlists are excluded from all modes, see
+fetcher/youtube_search.py's module docstring.
 """
 import config
 from scorer.formulas import (
@@ -37,16 +33,6 @@ def _filter_videos(videos: list[dict], recency_years: int) -> list[dict]:
     return kept
 
 
-def _filter_playlists(playlists: list[dict]) -> list[dict]:
-    kept = []
-    for p in playlists:
-        count = p.get("video_count", 0)
-        if not (config.MIN_PLAYLIST_SIZE <= count <= config.MAX_PLAYLIST_SIZE):
-            continue
-        kept.append(p)
-    return kept
-
-
 def _score_videos(videos: list[dict]) -> None:
     max_views = max((v.get("views") or 0 for v in videos), default=1)
     for v in videos:
@@ -56,36 +42,13 @@ def _score_videos(videos: list[dict]) -> None:
         )
 
 
-def _score_playlists(playlists: list[dict]) -> None:
-    # No per-playlist view/recency data is available pre-transcript-fetch (see
-    # module docstring), so video_count is the only cheap completeness signal.
-    max_count = max((p.get("video_count") or 0 for p in playlists), default=1)
-    for p in playlists:
-        count_ratio = min((p.get("video_count") or 0) / max_count, 1.0) if max_count else 0.0
-        p["metadata_score"] = count_ratio
-
-
 def prefilter_candidates(
     videos: list[dict],
-    playlists: list[dict],
     recency_years: int = config.RECENCY_YEARS_DEFAULT,
     top_n: int = config.MAX_CANDIDATES,
-    video_only: bool = False,
 ) -> list[dict]:
-    """Returns up to top_n candidates, sorted by metadata_score desc.
-    video_only excludes playlists entirely — used by skill_mix mode, where a
-    single-channel playlist is unlikely to properly cover a topic spanning
-    multiple distinct skill domains (e.g. LinkedIn strategy + Canva design)."""
+    """Returns up to top_n video candidates, sorted by metadata_score desc."""
     filtered_videos = _filter_videos(videos, recency_years)
     _score_videos(filtered_videos)
-
-    if video_only:
-        filtered_videos.sort(key=lambda c: c["metadata_score"], reverse=True)
-        return filtered_videos[:top_n]
-
-    filtered_playlists = _filter_playlists(playlists)
-    _score_playlists(filtered_playlists)
-
-    combined = filtered_videos + filtered_playlists
-    combined.sort(key=lambda c: c["metadata_score"], reverse=True)
-    return combined[:top_n]
+    filtered_videos.sort(key=lambda c: c["metadata_score"], reverse=True)
+    return filtered_videos[:top_n]

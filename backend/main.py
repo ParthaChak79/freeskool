@@ -14,7 +14,6 @@ from learning_path.decomposer import decompose_topic
 from learning_path.path_ranker import generate_rationale
 from learning_path.subtopic_search import search_all_subtopics
 from ranker.rank import rank_candidates
-from scorer.formulas import estimate_playlist_duration_mins
 from scorer.llm_scorer import score_candidates
 from scorer.metadata_filter import prefilter_candidates
 from scorer.relevance_gate import filter_by_relevance
@@ -44,7 +43,7 @@ def health():
 
 
 def _candidate_id(c: dict) -> str:
-    return c["video_id"] if c["type"] == "video" else c["playlist_id"]
+    return c["video_id"]
 
 
 def _why_best(pick: dict, ranked: list[dict]) -> str:
@@ -64,7 +63,7 @@ def _why_best(pick: dict, ranked: list[dict]) -> str:
 
 
 def _format_result(c: dict) -> dict:
-    base = {
+    return {
         "type": c["type"],
         "title": c.get("title", ""),
         "channel": c.get("channel_name", ""),
@@ -72,19 +71,13 @@ def _format_result(c: dict) -> dict:
         "score": c["score"],
         "level": c.get("level"),
         "summary": c.get("summary", ""),
+        "duration_mins": round((c.get("duration_sec") or 0) / 60, 1),
     }
-    if c["type"] == "video":
-        base["duration_mins"] = round((c.get("duration_sec") or 0) / 60, 1)
-    else:
-        base["video_count"] = c.get("video_count")
-        duration_mins = estimate_playlist_duration_mins(c)
-        base["total_duration_hrs"] = round(duration_mins / 60, 1) if duration_mins is not None else None
-    return base
 
 
 def run_best_pick(query: str, level: str) -> dict:
     search_results = search_youtube(query)
-    prefiltered = prefilter_candidates(search_results["videos"], search_results["playlists"])
+    prefiltered = prefilter_candidates(search_results["videos"])
     if not prefiltered:
         return {"mode": "best_pick", "query": query, "level": level, "recommendation": None, "runners_up": []}
 
@@ -118,7 +111,7 @@ def run_best_pick(query: str, level: str) -> dict:
 
 def _format_path_step(step_num: int, step: dict, why: str) -> dict:
     c = step["candidate"]
-    result = {
+    return {
         "step": step_num,
         "subtopic": ", ".join(step["subtopics"]),
         "type": c["type"],
@@ -126,20 +119,14 @@ def _format_path_step(step_num: int, step: dict, why: str) -> dict:
         "channel": c.get("channel_name", ""),
         "url": c.get("url", ""),
         "why": why,
+        "duration_mins": round((c.get("duration_sec") or 0) / 60, 1),
     }
-    if c["type"] == "video":
-        result["duration_mins"] = round((c.get("duration_sec") or 0) / 60, 1)
-    else:
-        duration_mins = estimate_playlist_duration_mins(c)
-        result["duration_mins"] = duration_mins if duration_mins is not None else None
-    return result
 
 
-def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict, video_only: bool) -> dict:
+def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict) -> dict:
     """Shared body for learning_path and skill_mix — identical mechanics
     (decompose -> per-subtopic search -> relevance gate -> score -> assemble
-    -> rationale), differing only in how subtopics were decomposed and
-    whether playlists are excluded."""
+    -> rationale), differing only in how subtopics were decomposed."""
     cache_key = path_cache_key(topic, level, mode=mode)
     cached = get_cached_path(cache_key)
     if cached is not None:
@@ -153,7 +140,7 @@ def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict, video_
         set_cached_path(cache_key, result)
         return result
 
-    candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics, video_only=video_only)
+    candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics)
     all_candidates = list(candidates_by_id.values())
 
     # Relevance gate (optional, no-op if JEV_API_KEY unset) — see run_best_pick's comment.
@@ -187,18 +174,15 @@ def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict, video_
 
 def run_learning_path(topic: str, level: str) -> dict:
     decomp = decompose_topic(topic, level)
-    return _run_path_based_mode(topic, level, "learning_path", decomp, video_only=False)
+    return _run_path_based_mode(topic, level, "learning_path", decomp)
 
 
 def run_skill_mix(topic: str, level: str) -> dict:
     """Like Learning Path, but for topics that genuinely span multiple
     distinct skill domains (e.g. "a good LinkedIn graphic post" needs both
-    LinkedIn content strategy and graphic design). Videos only, no
-    playlists — a single-channel playlist is unlikely to properly cover
-    unrelated skill domains together, unlike a well-matched individual
-    video per subtopic."""
+    LinkedIn content strategy and graphic design)."""
     decomp = decompose_skill_mix(topic, level)
-    return _run_path_based_mode(topic, level, "skill_mix", decomp, video_only=True)
+    return _run_path_based_mode(topic, level, "skill_mix", decomp)
 
 
 @app.post("/search")

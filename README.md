@@ -22,7 +22,6 @@ JEV_API_KEY=                        # optional — see "Relevance pre-filter" be
 CACHE_TTL_DAYS=30
 MAX_CANDIDATES=15
 MAX_TRANSCRIPT_TOKENS=4000
-PLAYLIST_TRANSCRIPT_VIDEOS=1
 FETCH_CONCURRENCY=5
 RELEVANCE_GATE_KEEP_N=8
 BACKEND_URL=http://localhost:8000
@@ -78,14 +77,11 @@ Added beyond instructions.md's original two modes. For topics that genuinely req
 
 Not yet exposed in the Chrome extension UI (no third tab) — currently backend-only, testable via `POST /search` with `"mode": "skill_mix"`.
 
-## Phase 0 finding: playlist filtering
+## Phase 0 finding: playlists removed entirely
 
-The original concern was whether isolating playlist results from `engine=youtube` search required copying YouTube's `sp` filter parameter. It doesn't — a live test call showed the `youtube` engine already returns playlists in a separate top-level `playlist_results` array (undocumented ahead of time, found by testing), distinct from `video_results`. No `sp` workaround needed.
+Playlists were supported early on (instructions.md's "Best Pick: video *or* playlist"), but SerpApi never exposes a playlist's full video list — `playlist_results[].videos` caps out at 2 preview episodes per playlist, with no separate playlist-expansion engine (verified against SerpApi's own docs). Scoring a playlist meant judging it from 1-2 sampled episodes and approximating its total duration (avg episode length × `video_count`) — noticeably inaccurate for large playlists (seen in testing: a 5-step React path came out to an estimated 45.3 hours, likely overestimated). Each playlist episode also costs 2 SerpApi calls (transcript + `video_details`), so a playlist candidate cost 2x what a video candidate cost.
 
-**A real gap found in the same test, requiring a design decision:** SerpApi never exposes a playlist's full video list — `playlist_results[].videos` caps out at 2 preview episodes per playlist, and there's no separate playlist-expansion engine (verified against SerpApi's own docs). This means:
-- instructions.md's "score the first 3 playlist episodes" is reduced to 2 (`config.MAX_PLAYLIST_PREVIEW_VIDEOS`) — the max SerpApi provides — and then further reduced to **1** (`config.PLAYLIST_TRANSCRIPT_VIDEOS`, an env-configurable knob instructions.md already specifies). Each playlist episode costs 2 SerpApi calls (transcript + `video_details`), so at 2 episodes a playlist candidate cost 2x what a video candidate cost — a meaningful chunk of the ~65 credits a single cache-cold Best Pick search burns through at `MAX_CANDIDATES=15`. Dropping to 1 episode brings playlist cost to parity with video cost. This was chosen over removing playlists from consideration entirely (they're core to the product — "Best Pick: video *or* playlist" — and won the ranking outright in testing) or shrinking `MAX_CANDIDATES` (which would narrow the candidate pool for every search, not just playlists).
-- Playlist-level aggregate metadata (avg views, recency, total duration) is **approximated** from the preview episode(s) available (avg episode length × `video_count` for duration; the episode's views/date for the ranking formula's `normalized_view_count`/`recency_score`). This can be noticeably inaccurate for very large playlists (85+ videos) if the sampled episode(s) aren't representative — seen in testing, where a 5-step React learning path came out to an estimated 45.3 hours, likely overestimated. Dropping to 1 episode makes this approximation weaker still — a smaller quality hit than the alternatives above.
-- `playlist_expander.py`, listed in instructions.md's Project Structure, doesn't exist in this build — there's nothing for it to wrap.
+All three modes (Best Pick, Learning Path, Skill Mix) now recommend **videos only** — `fetcher/youtube_search.py` doesn't parse `playlist_results` at all, so the whole downstream pipeline (`metadata_filter`, `llm_scorer`, `rank.py`) only ever deals with videos. This both removes the approximation problem above and roughly halves per-candidate SerpApi spend compared to when playlists were in the mix. `playlist_expander.py`, listed in instructions.md's Project Structure, was never built — there's nothing for it to wrap.
 
 ## Other deviations from instructions.md, all called out in code comments
 

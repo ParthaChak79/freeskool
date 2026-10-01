@@ -20,24 +20,8 @@ def _build_video_transcript_block(video_id: str) -> str | None:
     return truncate_to_tokens(tr["text"], config.MAX_TRANSCRIPT_TOKENS)
 
 
-def _build_playlist_transcript_block(candidate: dict) -> str | None:
-    # instructions.md: first 3 episodes, 2000 tokens each. Phase 0 confirmed
-    # SerpApi exposes at most MAX_PLAYLIST_PREVIEW_VIDEOS (2) preview episodes
-    # per playlist, so this uses min(configured count, what's available).
-    n = min(config.PLAYLIST_TRANSCRIPT_VIDEOS, config.MAX_PLAYLIST_PREVIEW_VIDEOS)
-    episodes = candidate.get("preview_videos", [])[:n]
-    parts = []
-    for i, ep in enumerate(episodes, start=1):
-        tr = get_transcript(ep["video_id"])
-        if not tr["has_transcript"]:
-            continue
-        truncated = truncate_to_tokens(tr["text"], 2000)
-        parts.append(f"--- Episode {i}: {ep.get('title', '')} ---\n{truncated}")
-    return "\n\n".join(parts) if parts else None
-
-
 def _candidate_id(candidate: dict) -> str:
-    return candidate["video_id"] if candidate["type"] == "video" else candidate["playlist_id"]
+    return candidate["video_id"]
 
 
 def _build_prompt(topic: str, batch: list[tuple[str, str]]) -> str:
@@ -91,12 +75,7 @@ def score_candidates(topic: str, candidates: list[dict]) -> dict[str, dict]:
 
     def _fetch_block(c: dict) -> tuple[str, str | None]:
         cid = _candidate_id(c)
-        block = (
-            _build_video_transcript_block(cid)
-            if c["type"] == "video"
-            else _build_playlist_transcript_block(c)
-        )
-        return cid, block
+        return cid, _build_video_transcript_block(cid)
 
     # Transcript fetches are independent SerpApi calls per candidate — this
     # was a sequential loop and a full 15-candidate run confirmed live to

@@ -1,15 +1,11 @@
-"""Wraps SerpApi engine=youtube. Returns normalized video + playlist candidates."""
-from urllib.parse import parse_qs, urlparse
+"""Wraps SerpApi engine=youtube. Returns normalized video candidates.
 
+Playlists are deliberately ignored: all three modes (Best Pick, Learning
+Path, Skill Mix) recommend individual videos only — a playlist's full
+content can't be judged from SerpApi's 2-episode preview, and dropping it
+also halves per-candidate SerpApi spend (a playlist candidate cost 2x a
+video candidate: transcript + video_details per previewed episode)."""
 from fetcher._client import serpapi_get
-
-
-def _extract_playlist_id(link: str) -> str:
-    return parse_qs(urlparse(link).query).get("list", [""])[0]
-
-
-def _extract_video_id_from_link(link: str) -> str:
-    return parse_qs(urlparse(link).query).get("v", [""])[0]
 
 
 def _parse_video(v: dict) -> dict:
@@ -29,31 +25,9 @@ def _parse_video(v: dict) -> dict:
     }
 
 
-def _parse_playlist(p: dict) -> dict:
-    channel = p.get("channel") or {}
-    preview_videos = []
-    for pv in p.get("videos", []):
-        preview_videos.append({
-            "video_id": _extract_video_id_from_link(pv.get("link", "")),
-            "title": pv.get("title", ""),
-            "length_text": pv.get("length", ""),
-            "url": pv.get("link", ""),
-        })
-    return {
-        "playlist_id": _extract_playlist_id(p.get("link", "")),
-        "type": "playlist",
-        "title": p.get("title", ""),
-        "url": p.get("link", ""),
-        "channel_name": channel.get("name", ""),
-        "channel_url": channel.get("link", ""),
-        "channel_verified": channel.get("verified", False),
-        "video_count": p.get("video_count", 0),
-        "preview_videos": preview_videos,  # SerpApi exposes at most 2, see config.MAX_PLAYLIST_PREVIEW_VIDEOS
-    }
-
-
 def search_youtube(query: str, gl: str | None = None, hl: str | None = None) -> dict:
-    """Returns {"videos": [...], "playlists": [...]} for a query."""
+    """Returns {"videos": [...]} for a query. See module docstring on why
+    playlist_results is ignored entirely."""
     params = {"engine": "youtube", "search_query": query}
     if gl:
         params["gl"] = gl
@@ -61,5 +35,4 @@ def search_youtube(query: str, gl: str | None = None, hl: str | None = None) -> 
         params["hl"] = hl
     data = serpapi_get(params)
     videos = [_parse_video(v) for v in data.get("video_results", [])]
-    playlists = [_parse_playlist(p) for p in data.get("playlist_results", [])]
-    return {"videos": videos, "playlists": playlists}
+    return {"videos": videos}

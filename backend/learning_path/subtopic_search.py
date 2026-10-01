@@ -2,7 +2,8 @@
 For each subtopic, run a targeted YouTube search and metadata-prefilter down
 to a small candidate set, reusing the same fetcher/scorer pipeline as Best
 Pick. Each candidate is tagged with the subtopic(s) it was found under so the
-assembler (Step 3) can dedup a single video/playlist across subtopics."""
+assembler (Step 3) can dedup a single video across subtopics. Videos only —
+see fetcher/youtube_search.py's module docstring."""
 from concurrent.futures import ThreadPoolExecutor
 
 import config
@@ -11,7 +12,7 @@ from scorer.metadata_filter import prefilter_candidates
 
 
 def _candidate_id(c: dict) -> str:
-    return c["video_id"] if c["type"] == "video" else c["playlist_id"]
+    return c["video_id"]
 
 
 def _build_search_query(topic: str, subtopic: str) -> str:
@@ -28,19 +29,17 @@ def _build_search_query(topic: str, subtopic: str) -> str:
     return f"{topic} {subtopic} tutorial"
 
 
-def _search_one_subtopic(topic: str, subtopic: str, video_only: bool) -> list[dict]:
+def _search_one_subtopic(topic: str, subtopic: str) -> list[dict]:
     query = _build_search_query(topic, subtopic)
     results = search_youtube(query)
     return prefilter_candidates(
-        results["videos"], results["playlists"],
+        results["videos"],
         top_n=config.LEARNING_PATH_CANDIDATES_PER_SUBTOPIC,
-        video_only=video_only,
     )
 
 
-def search_all_subtopics(topic: str, subtopics: list[str], video_only: bool = False) -> tuple[dict[str, dict], dict[str, list[str]]]:
-    """Returns (candidates_by_id, subtopic -> ordered list of candidate ids).
-    video_only excludes playlists — see metadata_filter.prefilter_candidates."""
+def search_all_subtopics(topic: str, subtopics: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """Returns (candidates_by_id, subtopic -> ordered list of candidate ids)."""
     candidates_by_id: dict[str, dict] = {}
     ids_by_subtopic: dict[str, list[str]] = {}
 
@@ -52,7 +51,7 @@ def search_all_subtopics(topic: str, subtopics: list[str], video_only: bool = Fa
     with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
         results_by_subtopic = dict(zip(
             subtopics,
-            executor.map(lambda st: _search_one_subtopic(topic, st, video_only), subtopics),
+            executor.map(lambda st: _search_one_subtopic(topic, st), subtopics),
         ))
 
     for subtopic in subtopics:

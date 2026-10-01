@@ -84,18 +84,3 @@ def channel_authority_score(subscribers: int | None) -> float:
     if not subscribers or subscribers <= 0:
         return 0.0
     return min(math.log10(subscribers) / 8, 1.0)
-
-
-def estimate_playlist_duration_mins(candidate: dict) -> float | None:
-    """SerpApi never exposes full playlist duration (Phase 0 finding) —
-    approximated from the avg length of the available preview episodes times
-    video_count. Used by both Best Pick and Learning Path output formatting."""
-    durations = [
-        parse_duration_to_seconds(ep.get("length_text", ""))
-        for ep in candidate.get("preview_videos", [])
-    ]
-    durations = [d for d in durations if d is not None]
-    if not durations or not candidate.get("video_count"):
-        return None
-    avg_sec = sum(durations) / len(durations)
-    return round(avg_sec * candidate["video_count"] / 60, 1)

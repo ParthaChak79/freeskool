@@ -17,14 +17,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 CACHE_TTL_DAYS = _int_env("CACHE_TTL_DAYS", 30)
 MAX_CANDIDATES = _int_env("MAX_CANDIDATES", 15)
 MAX_TRANSCRIPT_TOKENS = _int_env("MAX_TRANSCRIPT_TOKENS", 4000)
-# instructions.md's default (3) already exceeds what SerpApi provides (2, see
-# MAX_PLAYLIST_PREVIEW_VIDEOS below). Reduced further to 1: each playlist
-# episode costs 2 SerpApi calls (transcript + video_details), so a playlist
-# candidate was costing 2x a video candidate. Episode 2 only "confirms depth"
-# per instructions.md's own reasoning — losing it is a smaller quality hit
-# than either dropping playlists entirely or shrinking MAX_CANDIDATES, which
-# would reduce every search's candidate pool, not just playlists.
-PLAYLIST_TRANSCRIPT_VIDEOS = _int_env("PLAYLIST_TRANSCRIPT_VIDEOS", 1)
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "chrome-extension://YOUR_EXT_ID")
@@ -42,25 +34,14 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 SERPAPI_BASE_URL = "https://serpapi.com/search"
 
-# Metadata pre-filter thresholds (instructions.md)
+# Metadata pre-filter thresholds (instructions.md). Playlists are excluded
+# from all modes (see fetcher/youtube_search.py), so only video thresholds
+# remain — also the one piece of this app's original design (SerpApi only
+# exposes a 2-episode preview per playlist, so playlist scoring was always an
+# approximation) that this change makes moot.
 MIN_VIDEO_DURATION_SEC = 5 * 60
 MAX_VIDEO_DURATION_SEC = 3 * 60 * 60
-MIN_PLAYLIST_SIZE = 2
-MAX_PLAYLIST_SIZE = 100
 RECENCY_YEARS_DEFAULT = 3
-
-# Confirmed live 2026-09-18: SerpApi's youtube engine only exposes a 2-video
-# preview per playlist (playlist_results[].videos), never the full item list,
-# and there is no separate playlist-expansion engine. instructions.md's "first
-# 3 playlist episodes" is therefore reduced to 2 — the max SerpApi provides.
-MAX_PLAYLIST_PREVIEW_VIDEOS = 2
-
-# instructions.md's playlist score formula references "completeness_score =
-# video_count vs expected for topic" without defining "expected." No per-topic
-# expected-length signal exists elsewhere in the spec (the Learning Path
-# decomposer's subtopic count isn't available during Best Pick's flat ranking),
-# so this is a fixed reference length for a "complete" course playlist.
-EXPECTED_PLAYLIST_SIZE = 15
 
 # Learning Path mode (instructions.md's Learning Path Feature)
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search
