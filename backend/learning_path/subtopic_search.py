@@ -14,8 +14,22 @@ def _candidate_id(c: dict) -> str:
     return c["video_id"] if c["type"] == "video" else c["playlist_id"]
 
 
+def _build_search_query(topic: str, subtopic: str) -> str:
+    if ": " in subtopic:
+        # Domain-prefixed subtopic (skill_mix, e.g. "Graphic Design:
+        # choosing a template that matches your brand") — the domain prefix
+        # is for display/dedup, not a search term. Concatenating the full
+        # (often long, full-sentence) original topic with the whole prefixed
+        # string produces a diluted, unfocused YouTube query; search the
+        # specific subtopic text alone instead, confirmed live to return
+        # weak candidates and empty paths before this fix.
+        _, specific = subtopic.split(": ", 1)
+        return f"{specific} tutorial"
+    return f"{topic} {subtopic} tutorial"
+
+
 def _search_one_subtopic(topic: str, subtopic: str, video_only: bool) -> list[dict]:
-    query = f"{topic} {subtopic} tutorial"
+    query = _build_search_query(topic, subtopic)
     results = search_youtube(query)
     return prefilter_candidates(
         results["videos"], results["playlists"],
