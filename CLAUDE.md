@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Chrome extension + FastAPI backend that answers "what's the single best way to learn X on YouTube right now." Three modes:
+**Freeskool** is a Chrome extension + FastAPI backend that answers "what's the single best way to learn X on YouTube right now." Three modes:
 - **Best Pick** — single best video for a query.
 - **Learning Path** — an ordered, non-overlapping sequence of videos covering a topic end to end (topic decomposed into subtopics, one best video picked per subtopic).
 - **Skill Mix** — like Learning Path, but for topics that genuinely span multiple distinct skill domains (e.g. "a good LinkedIn graphic post" needs both LinkedIn content strategy and graphic design). Auto-detects whether a topic needs splitting into domains.

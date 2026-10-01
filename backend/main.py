@@ -19,7 +19,7 @@ from scorer.metadata_filter import prefilter_candidates
 from scorer.relevance_gate import filter_by_relevance
 from skill_mix.decomposer import decompose_skill_mix
 
-app = FastAPI(title="YouTube Tutorial Finder API")
+app = FastAPI(title="Freeskool API")
 
 app.add_middleware(
     CORSMiddleware,

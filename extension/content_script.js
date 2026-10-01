@@ -102,7 +102,7 @@
 
     const content = el("div", { className: "ytf-content" });
 
-    container.appendChild(el("div", { className: "ytf-header", text: "Tutorial Finder" }));
+    container.appendChild(el("div", { className: "ytf-header", text: "Freeskool" }));
     container.appendChild(tabs);
     container.appendChild(filterRow);
     container.appendChild(content);

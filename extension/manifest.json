@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tutorial Finder",
+  "name": "Freeskool",
   "version": "1.0",
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
