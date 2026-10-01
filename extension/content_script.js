@@ -83,7 +83,8 @@
 
     const tabs = el("div", { className: "ytf-tabs" }, [
       el("button", { className: "ytf-tab ytf-tab-active", text: "★ Best Pick", attrs: { "data-mode": "best_pick" } }),
-      el("button", { className: "ytf-tab", text: "🗺 Learning Path", attrs: { "data-mode": "learning_path" } }),
+      el("button", { className: "ytf-tab", text: "🗺 Path", attrs: { "data-mode": "learning_path" } }),
+      el("button", { className: "ytf-tab", text: "🎯 Skill Mix", attrs: { "data-mode": "skill_mix" } }),
     ]);
 
     const filterRow = el("div", { className: "ytf-filter-row" }, [
@@ -199,13 +200,16 @@
     return `${(mins / 60).toFixed(1)} hrs`;
   }
 
-  function renderLearningPath(content, data) {
+  function renderPathBased(content, data) {
     content.replaceChildren();
 
     const header = el("div", { className: "ytf-path-header" }, [
       el("div", { className: "ytf-path-title", text: data.topic || "" }),
       el("div", { className: "ytf-path-total", text: `Estimated total: ${data.estimated_total_hrs} hrs · ${data.level}` }),
     ]);
+    if (data.domains && data.domains.length) {
+      header.appendChild(el("div", { className: "ytf-path-domains", text: `Skills: ${data.domains.join(" + ")}` }));
+    }
     content.appendChild(header);
 
     if (data.gaps && data.gaps.length) {
@@ -246,6 +250,16 @@
     return type === "playlist" ? "Playlist" : "Video";
   }
 
+  function renderResults(content, data) {
+    if (state.mode === "best_pick") {
+      renderBestPick(content, data);
+    } else {
+      // learning_path and skill_mix share the exact same output shape
+      // (skill_mix just adds a "domains" field) — same renderer for both.
+      renderPathBased(content, data);
+    }
+  }
+
   async function loadAndRender() {
     const container = buildSidebar();
     const content = container.querySelector(".ytf-content");
@@ -253,16 +267,23 @@
 
     const key = cacheKey();
     if (state.cache[key]) {
-      state.mode === "best_pick" ? renderBestPick(content, state.cache[key]) : renderLearningPath(content, state.cache[key]);
+      renderResults(content, state.cache[key]);
       return;
     }
 
     // Each backend call costs real SerpApi/LLM credits — these two guards are
     // a hard stop against ever firing overlapping or rapid-fire requests, no
     // matter how many "the query changed" signals arrive in quick succession.
+    // Blocked requests still need visible feedback — a silent no-op here
+    // previously left the sidebar showing stale data from a different tab/
+    // mode with no explanation why a tab switch seemingly "did nothing."
     if (state.loading) return;
     const now = Date.now();
-    if (now - state.lastFetchAt < MIN_FETCH_INTERVAL_MS) return;
+    const waitRemainingMs = MIN_FETCH_INTERVAL_MS - (now - state.lastFetchAt);
+    if (waitRemainingMs > 0) {
+      renderError(content, `Please wait ${Math.ceil(waitRemainingMs / 1000)}s before searching again.`);
+      return;
+    }
 
     state.loading = true;
     state.lastFetchAt = now;
@@ -270,7 +291,7 @@
     try {
       const data = await sendSearch(state.query, state.mode, state.level);
       state.cache[key] = data;
-      state.mode === "best_pick" ? renderBestPick(content, data) : renderLearningPath(content, data);
+      renderResults(content, data);
     } catch (err) {
       renderError(content, err.message || String(err));
     } finally {

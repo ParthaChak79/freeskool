@@ -35,13 +35,14 @@
 
 .ytf-tab {
   flex: 1;
-  padding: 8px 6px;
+  padding: 8px 4px;
   border: 1px solid #d3d3d3;
   background: #f9f9f9;
-  border-radius: 18px;
+  border-radius: 14px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .ytf-tab-active {
@@ -196,6 +197,17 @@
 .ytf-path-total {
   color: #606060;
   font-size: 12px;
+}
+
+.ytf-path-domains {
+  margin-top: 4px;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a73e8;
+  background: #e8f0fe;
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 
 .ytf-gaps {
