@@ -83,7 +83,11 @@ FETCH_CONCURRENCY = _int_env("FETCH_CONCURRENCY", 5)
 # Optional: unset JEV_API_KEY disables the gate entirely (candidates pass
 # through unfiltered), so this isn't a hard dependency for the app to run.
 JEV_API_KEY = os.environ.get("JEV_API_KEY", "")
-JEV_BASE_URL = "https://api.typesafe.ai/v1/systemone"
+# Routed through OpenRouter (the key in hand is an OpenRouter key, not a
+# direct TypeSafe one) — different endpoint/payload shape than TypeSafe's
+# own API. Confirmed live via docs cross-reference 2026-10-01.
+JEV_BASE_URL = "https://openrouter.ai/api/alpha/decisions"
+JEV_MODEL = os.environ.get("JEV_MODEL", "typesafe/jev-1.13")
 RELEVANCE_GATE_KEEP_N = _int_env("RELEVANCE_GATE_KEEP_N", 8)
 
 def require_api_keys() -> None:

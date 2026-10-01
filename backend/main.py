@@ -18,6 +18,7 @@ from scorer.formulas import estimate_playlist_duration_mins
 from scorer.llm_scorer import score_candidates
 from scorer.metadata_filter import prefilter_candidates
 from scorer.relevance_gate import filter_by_relevance
+from skill_mix.decomposer import decompose_skill_mix
 
 app = FastAPI(title="YouTube Tutorial Finder API")
 
@@ -33,7 +34,7 @@ RUNNERS_UP_COUNT = 4
 
 class SearchRequest(BaseModel):
     query: str
-    mode: Literal["best_pick", "learning_path"]
+    mode: Literal["best_pick", "learning_path", "skill_mix"]
     level: Optional[Literal["all", "beginner", "intermediate", "advanced"]] = "all"
 
 
@@ -134,23 +135,28 @@ def _format_path_step(step_num: int, step: dict, why: str) -> dict:
     return result
 
 
-def run_learning_path(topic: str, level: str) -> dict:
-    cache_key = path_cache_key(topic, level)
+def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict, video_only: bool) -> dict:
+    """Shared body for learning_path and skill_mix — identical mechanics
+    (decompose -> per-subtopic search -> relevance gate -> score -> assemble
+    -> rationale), differing only in how subtopics were decomposed and
+    whether playlists are excluded."""
+    cache_key = path_cache_key(topic, level, mode=mode)
     cached = get_cached_path(cache_key)
     if cached is not None:
         return cached
 
-    decomp = decompose_topic(topic, level)
     subtopics = decomp["subtopics"]
     if not subtopics:
-        result = {"mode": "learning_path", "topic": topic, "estimated_total_hrs": 0, "level": decomp["level"], "path": [], "gaps": []}
+        result = {"mode": mode, "topic": topic, "estimated_total_hrs": 0, "level": decomp["level"], "path": [], "gaps": []}
+        if "domains" in decomp:
+            result["domains"] = decomp["domains"]
         set_cached_path(cache_key, result)
         return result
 
-    candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics)
+    candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics, video_only=video_only)
     all_candidates = list(candidates_by_id.values())
 
-    # Same relevance gate as Best Pick — see run_best_pick's comment.
+    # Relevance gate (optional, no-op if JEV_API_KEY unset) — see run_best_pick's comment.
     all_candidates = filter_by_relevance(topic, all_candidates)
 
     llm_results = score_candidates(topic, all_candidates)
@@ -166,15 +172,33 @@ def run_learning_path(topic: str, level: str) -> dict:
     estimated_total_hrs = round(sum(s["duration_mins"] or 0 for s in path) / 60, 1)
 
     result = {
-        "mode": "learning_path",
+        "mode": mode,
         "topic": topic,
         "estimated_total_hrs": estimated_total_hrs,
         "level": decomp["level"],
         "path": path,
         "gaps": gaps,
     }
+    if "domains" in decomp:
+        result["domains"] = decomp["domains"]
     set_cached_path(cache_key, result)
     return result
+
+
+def run_learning_path(topic: str, level: str) -> dict:
+    decomp = decompose_topic(topic, level)
+    return _run_path_based_mode(topic, level, "learning_path", decomp, video_only=False)
+
+
+def run_skill_mix(topic: str, level: str) -> dict:
+    """Like Learning Path, but for topics that genuinely span multiple
+    distinct skill domains (e.g. "a good LinkedIn graphic post" needs both
+    LinkedIn content strategy and graphic design). Videos only, no
+    playlists — a single-channel playlist is unlikely to properly cover
+    unrelated skill domains together, unlike a well-matched individual
+    video per subtopic."""
+    decomp = decompose_skill_mix(topic, level)
+    return _run_path_based_mode(topic, level, "skill_mix", decomp, video_only=True)
 
 
 @app.post("/search")
@@ -185,6 +209,8 @@ def search(req: SearchRequest):
     try:
         if req.mode == "best_pick":
             return run_best_pick(req.query, req.level or "all")
+        if req.mode == "skill_mix":
+            return run_skill_mix(req.query, req.level or "all")
         return run_learning_path(req.query, req.level or "all")
     except SerpApiQuotaExceededError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e

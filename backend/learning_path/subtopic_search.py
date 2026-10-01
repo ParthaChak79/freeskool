@@ -14,17 +14,19 @@ def _candidate_id(c: dict) -> str:
     return c["video_id"] if c["type"] == "video" else c["playlist_id"]
 
 
-def _search_one_subtopic(topic: str, subtopic: str) -> list[dict]:
+def _search_one_subtopic(topic: str, subtopic: str, video_only: bool) -> list[dict]:
     query = f"{topic} {subtopic} tutorial"
     results = search_youtube(query)
     return prefilter_candidates(
         results["videos"], results["playlists"],
         top_n=config.LEARNING_PATH_CANDIDATES_PER_SUBTOPIC,
+        video_only=video_only,
     )
 
 
-def search_all_subtopics(topic: str, subtopics: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
-    """Returns (candidates_by_id, subtopic -> ordered list of candidate ids)."""
+def search_all_subtopics(topic: str, subtopics: list[str], video_only: bool = False) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    """Returns (candidates_by_id, subtopic -> ordered list of candidate ids).
+    video_only excludes playlists — see metadata_filter.prefilter_candidates."""
     candidates_by_id: dict[str, dict] = {}
     ids_by_subtopic: dict[str, list[str]] = {}
 
@@ -36,7 +38,7 @@ def search_all_subtopics(topic: str, subtopics: list[str]) -> tuple[dict[str, di
     with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
         results_by_subtopic = dict(zip(
             subtopics,
-            executor.map(lambda st: _search_one_subtopic(topic, st), subtopics),
+            executor.map(lambda st: _search_one_subtopic(topic, st, video_only), subtopics),
         ))
 
     for subtopic in subtopics:

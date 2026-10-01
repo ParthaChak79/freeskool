@@ -121,8 +121,11 @@ def set_cached_video_details(video_id: str, details: dict) -> None:
         conn.close()
 
 
-def path_cache_key(topic: str, level: str) -> str:
-    return f"{topic.strip().lower()}::{level}"
+def path_cache_key(topic: str, level: str, mode: str = "learning_path") -> str:
+    # mode included since skill_mix and learning_path produce genuinely
+    # different results for the same topic (different decomposition,
+    # videos-only vs. not) - without this they'd collide in the cache.
+    return f"{mode}::{topic.strip().lower()}::{level}"
 
 
 def get_cached_path(cache_key: str) -> dict | None:

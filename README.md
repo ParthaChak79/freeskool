@@ -66,11 +66,17 @@ Rate-limit verification: the exact batch shape that broke Groq (5 candidates × 
 
 ## Relevance pre-filter: Jev (optional)
 
-An optional extra layer, added after the pipeline was confirmed working: [Jev](https://console.typesafe.ai), TypeSafe AI's "System One" decision model, sits between the metadata pre-filter and transcript fetching (`scorer/relevance_gate.py`). Unlike a typical LLM, Jev doesn't generate text — it takes a text "state" and answers typed questions about it (here, a `noul` question: a 0–1 probability). Each pre-filtered candidate's *free* metadata (title/description/channel, already in hand from the initial search — no SerpApi cost) is scored for relevance to the search topic, and only the top `RELEVANCE_GATE_KEEP_N` (default 8) proceed to transcript/`video_details` fetching.
+An optional extra layer, added after the pipeline was confirmed working: [Jev](https://openrouter.ai), TypeSafe AI's "System One" decision model, sits between the metadata pre-filter and transcript fetching (`scorer/relevance_gate.py`). Unlike a typical LLM, Jev doesn't generate text — it takes a text "state" and answers typed questions about it (here, a `noul` question: a 0–1 probability). Each pre-filtered candidate's *free* metadata (title/description/channel, already in hand from the initial search — no SerpApi cost) is scored for relevance to the search topic, and only the top `RELEVANCE_GATE_KEEP_N` (default 8) proceed to transcript/`video_details` fetching. Routed through OpenRouter's Jev endpoint (`https://openrouter.ai/api/alpha/decisions`, an alpha API) rather than TypeSafe's own direct API, since that's the key in hand — different endpoint and payload shape (`model` field required) than TypeSafe's own API; verified live, correctly scored an on-topic candidate at 0.98 and an off-topic one at 0.01.
 
 This is the one piece of this pipeline that actually reduces SerpApi spend rather than just LLM spend — transcript and video-details calls are what cost SerpApi credits, and narrowing 15 candidates down to 8 before those calls happen cuts them roughly in half. Running a relevance check *after* transcripts are already fetched (e.g. alongside the Gemini content scorer) wouldn't save anything, since the SerpApi cost is already sunk by that point — that's why this sits where it does in the pipeline, not later.
 
 Entirely optional: `filter_by_relevance()` is a no-op (returns candidates unchanged) if `JEV_API_KEY` isn't set, so the app runs the same as before with it blank. Fails open on a per-candidate basis too — if a single Jev call errors, that candidate gets a neutral score rather than being dropped or crashing the whole request.
+
+## Third mode: Skill Mix (`mode=skill_mix`)
+
+Added beyond instructions.md's original two modes. For topics that genuinely require combining multiple distinct skills — e.g. "a good LinkedIn graphic post" needs both LinkedIn content strategy and graphic design, fields normally taught by different creators — a single playlist is unlikely to properly cover all of them. `skill_mix/decomposer.py` identifies the distinct skill domain(s) a topic actually spans (not forcing a split for single-skill topics — confirmed live: "learn python" correctly resolves to one domain, "LinkedIn graphic post" correctly resolves to two or three) and decomposes into domain-prefixed subtopics (e.g. `"Graphic Design: choosing a template"`). From there it reuses Learning Path's entire pipeline unchanged (`main.py`'s `_run_path_based_mode`, shared by both modes) — per-subtopic search, relevance gate, scoring, dedup/gap assembly, rationale — except `prefilter_candidates(..., video_only=True)` excludes playlists throughout. Output format matches Learning Path's exactly, with an added `domains` field listing what was detected.
+
+Not yet exposed in the Chrome extension UI (no third tab) — currently backend-only, testable via `POST /search` with `"mode": "skill_mix"`.
 
 ## Phase 0 finding: playlist filtering
 
@@ -110,6 +116,7 @@ youtube-tutorial-finder/
     ├── scorer/                 # metadata pre-filter, batched LLM scoring, shared formulas
     ├── ranker/                 # weighted final scoring
     ├── learning_path/          # decomposer, subtopic search, assembler, path rationale
+    ├── skill_mix/               # domain-aware decomposer for mode=skill_mix (see below)
     └── cache/                  # SQLite cache (transcripts, scores, paths)
 ```
 

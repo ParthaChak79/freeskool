@@ -70,12 +70,20 @@ def prefilter_candidates(
     playlists: list[dict],
     recency_years: int = config.RECENCY_YEARS_DEFAULT,
     top_n: int = config.MAX_CANDIDATES,
+    video_only: bool = False,
 ) -> list[dict]:
-    """Returns up to top_n candidates (mixed videos + playlists), sorted by metadata_score desc."""
+    """Returns up to top_n candidates, sorted by metadata_score desc.
+    video_only excludes playlists entirely — used by skill_mix mode, where a
+    single-channel playlist is unlikely to properly cover a topic spanning
+    multiple distinct skill domains (e.g. LinkedIn strategy + Canva design)."""
     filtered_videos = _filter_videos(videos, recency_years)
-    filtered_playlists = _filter_playlists(playlists)
-
     _score_videos(filtered_videos)
+
+    if video_only:
+        filtered_videos.sort(key=lambda c: c["metadata_score"], reverse=True)
+        return filtered_videos[:top_n]
+
+    filtered_playlists = _filter_playlists(playlists)
     _score_playlists(filtered_playlists)
 
     combined = filtered_videos + filtered_playlists
