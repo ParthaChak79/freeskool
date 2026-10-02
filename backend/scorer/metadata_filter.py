@@ -5,11 +5,12 @@ those go on to (paid) transcript fetching + LLM scoring in Phase 4.
 Videos only — playlists are excluded from all modes, see
 fetcher/youtube_search.py's module docstring.
 
-Deviates from instructions.md's filter rules per explicit user direction:
-a hard 3-hour duration ceiling and 3-year age cutoff both excluded videos
-outright; now there's only a floor (5 min, to exclude shorts/clips) — a
-longer video is treated as a positive signal (can cover more ground), not
-a reason to exclude, and an older video is no longer excluded either.
+Deviates from instructions.md's duration filter per explicit user direction:
+the original hard 3-hour ceiling excluded videos outright; now there's only
+a floor (5 min, to exclude shorts/clips) — a longer video is treated as a
+positive signal (can cover more ground), not a reason to exclude. The
+3-year age cutoff is kept as-is (still a hard exclusion, not just a scoring
+penalty), per explicit user direction to leave that one alone.
 """
 import config
 from scorer.formulas import (
@@ -21,7 +22,7 @@ from scorer.formulas import (
 )
 
 
-def _filter_videos(videos: list[dict]) -> list[dict]:
+def _filter_videos(videos: list[dict], recency_years: int) -> list[dict]:
     kept = []
     for v in videos:
         duration_sec = parse_duration_to_seconds(v.get("length_text", ""))
@@ -31,6 +32,9 @@ def _filter_videos(videos: list[dict]) -> list[dict]:
             continue
 
         age_years = parse_date_to_age_years(v.get("published_date_text", ""))
+        if age_years is not None and age_years > recency_years:
+            continue
+
         v = {**v, "duration_sec": duration_sec, "age_years": age_years}
         kept.append(v)
     return kept
@@ -49,10 +53,11 @@ def _score_videos(videos: list[dict]) -> None:
 
 def prefilter_candidates(
     videos: list[dict],
+    recency_years: int = config.RECENCY_YEARS_DEFAULT,
     top_n: int = config.MAX_CANDIDATES,
 ) -> list[dict]:
     """Returns up to top_n video candidates, sorted by metadata_score desc."""
-    filtered_videos = _filter_videos(videos)
+    filtered_videos = _filter_videos(videos, recency_years)
     _score_videos(filtered_videos)
     filtered_videos.sort(key=lambda c: c["metadata_score"], reverse=True)
     return filtered_videos[:top_n]

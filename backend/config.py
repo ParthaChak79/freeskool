@@ -34,12 +34,13 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 SERPAPI_BASE_URL = "https://serpapi.com/search"
 
-# Metadata pre-filter floor. Deviates from instructions.md per explicit user
-# direction: no max-duration ceiling (a longer video can cover more ground —
-# see scorer/formulas.duration_score) and no age cutoff (an older video isn't
-# excluded, just weighted lower via recency_score). Only a duration floor
-# remains, to exclude shorts/clips too brief to be a real tutorial.
+# Metadata pre-filter thresholds. Duration ceiling deviates from
+# instructions.md per explicit user direction: no max-duration cutoff (a
+# longer video can cover more ground — see scorer/formulas.duration_score),
+# only a floor to exclude shorts/clips too brief to be a real tutorial. The
+# 3-year age cutoff below is kept as instructions.md originally specified.
 MIN_VIDEO_DURATION_SEC = 5 * 60
+RECENCY_YEARS_DEFAULT = 3
 
 # Learning Path mode (instructions.md's Learning Path Feature)
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search
