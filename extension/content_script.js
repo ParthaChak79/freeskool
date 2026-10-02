@@ -250,8 +250,8 @@
     return type === "playlist" ? "Playlist" : "Video";
   }
 
-  function renderResults(content, data) {
-    if (state.mode === "best_pick") {
+  function renderResults(content, mode, data) {
+    if (mode === "best_pick") {
       renderBestPick(content, data);
     } else {
       // learning_path and skill_mix share the exact same output shape
@@ -265,9 +265,18 @@
     const content = container.querySelector(".ytf-content");
     if (!state.query) return;
 
+    // Captured now, not read from `state` again later — state.mode can
+    // change (user switches tabs) while this specific request is still in
+    // flight below. Rendering against a since-changed state.mode made a
+    // stale response from an abandoned tab get displayed as if it were the
+    // now-active tab's data (confirmed live: Learning Path and Skill Mix
+    // showing "the same videos" after a tab switch mid-request). Render
+    // decisions in this call must stay pinned to the mode it was actually
+    // fetched for.
+    const mode = state.mode;
     const key = cacheKey();
     if (state.cache[key]) {
-      renderResults(content, state.cache[key]);
+      renderResults(content, mode, state.cache[key]);
       return;
     }
 
@@ -277,7 +286,10 @@
     // Blocked requests still need visible feedback — a silent no-op here
     // previously left the sidebar showing stale data from a different tab/
     // mode with no explanation why a tab switch seemingly "did nothing."
-    if (state.loading) return;
+    if (state.loading) {
+      renderError(content, "Still loading the previous request — try again in a moment.");
+      return;
+    }
     const now = Date.now();
     const waitRemainingMs = MIN_FETCH_INTERVAL_MS - (now - state.lastFetchAt);
     if (waitRemainingMs > 0) {
@@ -289,13 +301,31 @@
     state.lastFetchAt = now;
     renderLoading(content);
     try {
-      const data = await sendSearch(state.query, state.mode, state.level);
+      const data = await sendSearch(state.query, mode, state.level);
       state.cache[key] = data;
-      renderResults(content, data);
+      // Only render if this request's tab/mode is still the one showing —
+      // otherwise this is exactly the stale-response case above, now caught
+      // at render time too: the data is still cached under its own key for
+      // when the user switches back, just not painted over whatever's
+      // currently on screen.
+      if (state.mode === mode) {
+        renderResults(content, mode, data);
+      }
     } catch (err) {
-      renderError(content, err.message || String(err));
+      if (state.mode === mode) {
+        renderError(content, err.message || String(err));
+      }
     } finally {
       state.loading = false;
+      // The user switched tabs while this request was in flight — it just
+      // finished for the tab they left, not the one they're on now,  so
+      // pick up the one they actually want. Still subject to the
+      // MIN_FETCH_INTERVAL_MS guard above, so this can't bypass the rate
+      // limit — worst case it shows "please wait Xs" instead of leaving the
+      // sidebar stuck on "still loading" with nothing to act on.
+      if (state.mode !== mode) {
+        loadAndRender();
+      }
     }
   }
 
