@@ -11,6 +11,11 @@ give complete coverage, from first principles to practical application. Keep
 each subtopic broad enough to be its own YouTube search topic — don't split
 into more granular steps than that.{level_hint}
 
+Each subtopic will be used AS A YOUTUBE SEARCH QUERY on its own, with no other
+context attached. It must be self-contained: include the subject itself, not
+just the sub-concept. For topic "learn python", write "Python variables" —
+not just "variables" (too generic alone, could mean anything in any language).
+
 Topic: "{topic}"
 
 Return ONLY valid JSON in this shape, no preamble:

@@ -8,6 +8,7 @@ import config
 from cache.db import get_cached_score, set_cached_score
 from fetcher.transcript import get_transcript, truncate_to_tokens
 from llm_client import call_json
+from scorer.formulas import candidate_topic_context
 
 BATCH_SIZE = 5
 NO_TRANSCRIPT_FLAG = "no_transcript"
@@ -24,27 +25,36 @@ def _candidate_id(candidate: dict) -> str:
     return candidate["video_id"]
 
 
-def _build_prompt(topic: str, batch: list[tuple[str, str]]) -> str:
-    transcript_lines = "\n".join(f"[{cid}]: {text}" for cid, text in batch)
+def _build_prompt(batch: list[tuple[str, str, str]]) -> str:
+    # Each candidate is judged against its OWN topic context, not a single
+    # shared one for the whole batch — a learning_path/skill_mix candidate
+    # found under a narrow subtopic (e.g. "Typography and hierarchy in social
+    # media graphics") should be judged against that subtopic, not the full
+    # original topic ("how to create a good graphic post on linkedin"). Judged
+    # against the full topic, every narrow-subtopic video scored near 0 with
+    # covers_topic=false (confirmed live: an entire Learning Path came back
+    # as all gaps), since no single video is meant to cover the whole topic
+    # alone. Same fix as scorer/relevance_gate.py's candidate_topic_context.
+    sections = "\n\n".join(
+        f'[{cid}] Topic being searched: "{ctx}"\nTranscript:\n{text}'
+        for cid, ctx, text in batch
+    )
     return f"""You are evaluating YouTube tutorial transcripts for quality.
 For each transcript below, return a JSON array with:
 - id (as given)
 - score (0-10)
 - level ("beginner" | "intermediate" | "advanced")
-- covers_topic (true/false)
+- covers_topic (true/false — whether it covers ITS OWN topic below, not any other video's)
 - subtopics_covered (list of strings — specific concepts this video teaches)
 - summary (max 2 sentences)
 
-Topic being searched: "{topic}"
-
-Transcripts:
-{transcript_lines}
+{sections}
 
 Return ONLY valid JSON. No preamble."""
 
 
-def _score_batch(topic: str, batch: list[tuple[str, str]]) -> dict[str, dict]:
-    prompt = _build_prompt(topic, batch)
+def _score_batch(batch: list[tuple[str, str, str]]) -> dict[str, dict]:
+    prompt = _build_prompt(batch)
     results = call_json(prompt, max_tokens=2000)
     return {str(r["id"]): r for r in results}
 
@@ -73,29 +83,29 @@ def score_candidates(topic: str, candidates: list[dict]) -> dict[str, dict]:
         else:
             to_fetch.append(c)
 
-    def _fetch_block(c: dict) -> tuple[str, str | None]:
+    def _fetch_block(c: dict) -> tuple[str, str, str | None]:
         cid = _candidate_id(c)
-        return cid, _build_video_transcript_block(cid)
+        return cid, candidate_topic_context(topic, c), _build_video_transcript_block(cid)
 
     # Transcript fetches are independent SerpApi calls per candidate — this
     # was a sequential loop and a full 15-candidate run confirmed live to
     # take 90+ seconds. Threaded because these are I/O-bound (GIL releases
     # during the network wait).
-    scorable: list[tuple[str, str]] = []
+    scorable: list[tuple[str, str, str]] = []
     if to_fetch:
         with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
-            for cid, block in executor.map(_fetch_block, to_fetch):
+            for cid, ctx, block in executor.map(_fetch_block, to_fetch):
                 if block is None:
                     results[cid] = {
                         "id": cid, "score": None, "level": None, "covers_topic": None,
                         "subtopics_covered": [], "summary": "", "flag": NO_TRANSCRIPT_FLAG,
                     }
                 else:
-                    scorable.append((cid, block))
+                    scorable.append((cid, ctx, block))
 
     for i in range(0, len(scorable), BATCH_SIZE):
         batch = scorable[i:i + BATCH_SIZE]
-        batch_results = _score_batch(topic, batch)
+        batch_results = _score_batch(batch)
         for cid, r in batch_results.items():
             set_cached_score(cid, r)
         results.update(batch_results)

@@ -84,3 +84,18 @@ def channel_authority_score(subscribers: int | None) -> float:
     if not subscribers or subscribers <= 0:
         return 0.0
     return min(math.log10(subscribers) / 8, 1.0)
+
+
+def candidate_topic_context(topic: str, candidate: dict) -> str:
+    """What a candidate should actually be judged against. Candidates from
+    learning_path/skill_mix's per-subtopic search carry the specific
+    subtopic(s) they were found under (_subtopics); judging those against the
+    *overall* topic instead unfairly penalizes a perfectly on-target
+    candidate — e.g. a Canva-templates video is exactly right for a "Graphic
+    Design: choosing a template" subtopic, but won't "cover" the full
+    "LinkedIn graphic post" topic on its own, and would wrongly score near
+    zero if judged against that. Best Pick candidates have no _subtopics and
+    fall back to the plain topic. Used by both the relevance gate (before
+    transcript fetching) and the LLM content scorer (after)."""
+    subtopics = candidate.get("_subtopics")
+    return "; ".join(subtopics) if subtopics else topic

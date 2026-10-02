@@ -140,7 +140,7 @@ def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict) -> dic
         set_cached_path(cache_key, result)
         return result
 
-    candidates_by_id, ids_by_subtopic = search_all_subtopics(topic, subtopics)
+    candidates_by_id, ids_by_subtopic = search_all_subtopics(subtopics)
     all_candidates = list(candidates_by_id.values())
 
     # Relevance gate (optional, no-op if JEV_API_KEY unset) — see run_best_pick's comment.

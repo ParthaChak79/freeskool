@@ -15,22 +15,25 @@ def _candidate_id(c: dict) -> str:
     return c["video_id"]
 
 
-def _build_search_query(topic: str, subtopic: str) -> str:
+def _build_search_query(subtopic: str) -> str:
+    # The decomposer prompt requires every subtopic to already be a
+    # self-contained YouTube search topic (including the subject, e.g.
+    # "Python variables" not "variables"), so it's searched alone — no need
+    # to prepend the original topic. Prepending it anyway (the original
+    # design) diluted every query once the topic itself was a long sentence
+    # (e.g. "how to create a good graphic post on linkedin"): every subtopic
+    # search came back empty and the whole path turned into gaps, confirmed
+    # live before this fix. Domain-prefixed subtopics (skill_mix, e.g.
+    # "Graphic Design: choosing a template") strip the prefix first — it's
+    # for display/dedup only, not a search term.
     if ": " in subtopic:
-        # Domain-prefixed subtopic (skill_mix, e.g. "Graphic Design:
-        # choosing a template that matches your brand") — the domain prefix
-        # is for display/dedup, not a search term. Concatenating the full
-        # (often long, full-sentence) original topic with the whole prefixed
-        # string produces a diluted, unfocused YouTube query; search the
-        # specific subtopic text alone instead, confirmed live to return
-        # weak candidates and empty paths before this fix.
         _, specific = subtopic.split(": ", 1)
         return f"{specific} tutorial"
-    return f"{topic} {subtopic} tutorial"
+    return f"{subtopic} tutorial"
 
 
-def _search_one_subtopic(topic: str, subtopic: str) -> list[dict]:
-    query = _build_search_query(topic, subtopic)
+def _search_one_subtopic(subtopic: str) -> list[dict]:
+    query = _build_search_query(subtopic)
     results = search_youtube(query)
     return prefilter_candidates(
         results["videos"],
@@ -38,7 +41,7 @@ def _search_one_subtopic(topic: str, subtopic: str) -> list[dict]:
     )
 
 
-def search_all_subtopics(topic: str, subtopics: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
+def search_all_subtopics(subtopics: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:
     """Returns (candidates_by_id, subtopic -> ordered list of candidate ids)."""
     candidates_by_id: dict[str, dict] = {}
     ids_by_subtopic: dict[str, list[str]] = {}
@@ -51,7 +54,7 @@ def search_all_subtopics(topic: str, subtopics: list[str]) -> tuple[dict[str, di
     with ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY) as executor:
         results_by_subtopic = dict(zip(
             subtopics,
-            executor.map(lambda st: _search_one_subtopic(topic, st), subtopics),
+            executor.map(_search_one_subtopic, subtopics),
         ))
 
     for subtopic in subtopics:

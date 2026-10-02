@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 import config
+from scorer.formulas import candidate_topic_context
 
 QUESTION_KEY = "is_relevant"
 NEUTRAL_RELEVANCE = 0.5  # fallback when a single candidate's Jev call fails
@@ -29,21 +30,9 @@ NEUTRAL_RELEVANCE = 0.5  # fallback when a single candidate's Jev call fails
                           # silently dropping a candidate over a transient error
 
 
-def _relevance_context(topic: str, candidate: dict) -> str:
-    # Candidates from learning_path/skill_mix's per-subtopic search carry the
-    # specific subtopic(s) they were found under (_subtopics). Checking
-    # those against the *overall* topic instead unfairly penalizes a
-    # perfectly on-target candidate — e.g. a Canva-templates video is
-    # exactly right for a "Graphic Design: choosing a template" subtopic,
-    # but would score low against the full "LinkedIn graphic post" topic on
-    # its own. Best Pick candidates have no _subtopics and fall back to topic.
-    subtopics = candidate.get("_subtopics")
-    return "; ".join(subtopics) if subtopics else topic
-
-
 def _build_state(topic: str, candidate: dict) -> str:
     return (
-        f"Topic being searched: {_relevance_context(topic, candidate)}\n"
+        f"Topic being searched: {candidate_topic_context(topic, candidate)}\n"
         f"Title: {candidate.get('title', '')}\n"
         f"Description: {candidate.get('description', '')}\n"
         f"Channel: {candidate.get('channel_name', '')}"
@@ -51,7 +40,7 @@ def _build_state(topic: str, candidate: dict) -> str:
 
 
 def _call_jev(topic: str, candidate: dict) -> float:
-    relevance_context = _relevance_context(topic, candidate)
+    relevance_context = candidate_topic_context(topic, candidate)
     payload = {
         "model": config.JEV_MODEL,
         "state": _build_state(topic, candidate),
