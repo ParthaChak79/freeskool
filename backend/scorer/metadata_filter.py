@@ -45,9 +45,9 @@ def _score_videos(videos: list[dict]) -> None:
     max_duration = max((v.get("duration_sec") or 0 for v in videos), default=1)
     for v in videos:
         v["metadata_score"] = (
-            normalized_view_count(v.get("views"), max_views) * 0.5
-            + duration_score(v.get("duration_sec"), max_duration) * 0.3
-            + recency_score(v.get("age_years")) * 0.2
+            normalized_view_count(v.get("views"), max_views) * 0.35
+            + duration_score(v.get("duration_sec"), max_duration) * 0.35
+            + recency_score(v.get("age_years")) * 0.30
         )
 
 

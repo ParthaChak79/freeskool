@@ -12,9 +12,9 @@ fetcher/youtube_search.py's module docstring.
 Weights deviate from instructions.md's original formula per explicit user
 direction: duration is now a positive signal (a longer video can cover more
 ground, see scorer/formulas.duration_score) rather than only a filter
-threshold, funded by shrinking recency's weight (an older video is no longer
-excluded either — see scorer/metadata_filter.py — so it matters less overall
-that it's rewarded less here too).
+threshold, and both duration and recency carry more weight than the original
+formula gave recency alone — a newer, longer video should score meaningfully
+higher, not just avoid being filtered out.
 """
 from concurrent.futures import ThreadPoolExecutor
 
@@ -29,8 +29,8 @@ from scorer.formulas import (
 )
 
 VIDEO_WEIGHTS = {
-    "llm": 0.45, "views": 0.15, "like_ratio": 0.15,
-    "duration": 0.10, "recency": 0.05, "channel_authority": 0.10,
+    "llm": 0.40, "views": 0.10, "like_ratio": 0.10,
+    "duration": 0.15, "recency": 0.15, "channel_authority": 0.10,
 }
 
 
