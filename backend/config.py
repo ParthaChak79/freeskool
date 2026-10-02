@@ -34,14 +34,12 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 SERPAPI_BASE_URL = "https://serpapi.com/search"
 
-# Metadata pre-filter thresholds (instructions.md). Playlists are excluded
-# from all modes (see fetcher/youtube_search.py), so only video thresholds
-# remain — also the one piece of this app's original design (SerpApi only
-# exposes a 2-episode preview per playlist, so playlist scoring was always an
-# approximation) that this change makes moot.
+# Metadata pre-filter floor. Deviates from instructions.md per explicit user
+# direction: no max-duration ceiling (a longer video can cover more ground —
+# see scorer/formulas.duration_score) and no age cutoff (an older video isn't
+# excluded, just weighted lower via recency_score). Only a duration floor
+# remains, to exclude shorts/clips too brief to be a real tutorial.
 MIN_VIDEO_DURATION_SEC = 5 * 60
-MAX_VIDEO_DURATION_SEC = 3 * 60 * 60
-RECENCY_YEARS_DEFAULT = 3
 
 # Learning Path mode (instructions.md's Learning Path Feature)
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search

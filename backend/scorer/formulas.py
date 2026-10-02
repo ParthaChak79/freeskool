@@ -79,6 +79,15 @@ def normalized_view_count(views: int | None, max_views_in_set: int) -> float:
     return math.log10(views) / math.log10(max_views_in_set)
 
 
+def duration_score(duration_sec: int | None, max_duration_in_set: int) -> float:
+    """log10(duration) / log10(max_duration_in_set) — same log-scale shape as
+    normalized_view_count, so a longer video scores higher (it can cover more
+    ground) with diminishing returns rather than a hard linear scale."""
+    if not duration_sec or duration_sec <= 0 or max_duration_in_set <= 1:
+        return 0.0
+    return math.log10(duration_sec) / math.log10(max_duration_in_set)
+
+
 def channel_authority_score(subscribers: int | None) -> float:
     """log10(subscribers) / 8, capped at 1.0."""
     if not subscribers or subscribers <= 0:

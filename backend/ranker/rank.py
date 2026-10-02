@@ -1,13 +1,20 @@
-"""Weighted final scoring — instructions.md's Video Score formula, exactly as
-written, sourced from SerpApi fields via Phase 2's fetchers. Candidates
-without an LLM score (no_transcript flag from Phase 4) fall back to a
-metadata-only score using the non-LLM components, renormalized to sum to 1 —
+"""Weighted final scoring — instructions.md's Video Score formula as a base,
+sourced from SerpApi fields via Phase 2's fetchers. Candidates without an
+LLM score (no_transcript flag from Phase 4) fall back to a metadata-only
+score using the non-LLM components, renormalized to sum to 1 —
 instructions.md doesn't specify this case, but Known Limitations says such
 candidates should get "a metadata-only score with a flag" rather than being
 dropped, so ranking has to define what that score is.
 
 Videos only — playlists are excluded from all modes, see
 fetcher/youtube_search.py's module docstring.
+
+Weights deviate from instructions.md's original formula per explicit user
+direction: duration is now a positive signal (a longer video can cover more
+ground, see scorer/formulas.duration_score) rather than only a filter
+threshold, funded by shrinking recency's weight (an older video is no longer
+excluded either — see scorer/metadata_filter.py — so it matters less overall
+that it's rewarded less here too).
 """
 from concurrent.futures import ThreadPoolExecutor
 
@@ -15,12 +22,16 @@ import config
 from fetcher.video_details import get_video_details
 from scorer.formulas import (
     channel_authority_score,
+    duration_score,
     normalized_view_count,
     parse_date_to_age_years,
     recency_score,
 )
 
-VIDEO_WEIGHTS = {"llm": 0.50, "views": 0.15, "like_ratio": 0.15, "recency": 0.10, "channel_authority": 0.10}
+VIDEO_WEIGHTS = {
+    "llm": 0.45, "views": 0.15, "like_ratio": 0.15,
+    "duration": 0.10, "recency": 0.05, "channel_authority": 0.10,
+}
 
 
 def _enrich_video(candidate: dict) -> dict:
@@ -36,7 +47,7 @@ def _enrich_video(candidate: dict) -> dict:
     }
 
 
-def _score_video(candidate: dict, max_views: int, llm_score: dict | None) -> dict:
+def _score_video(candidate: dict, max_views: int, max_duration: int, llm_score: dict | None) -> dict:
     like_ratio = 0.0
     if candidate["extracted_views"]:
         like_ratio = min(candidate["extracted_likes"] / candidate["extracted_views"], 1.0)
@@ -44,6 +55,7 @@ def _score_video(candidate: dict, max_views: int, llm_score: dict | None) -> dic
     components = {
         "views": normalized_view_count(candidate["extracted_views"], max_views),
         "like_ratio": like_ratio,
+        "duration": duration_score(candidate.get("duration_sec"), max_duration),
         "recency": recency_score(candidate["age_years"]),
         "channel_authority": channel_authority_score(candidate["extracted_subscribers"]),
     }
@@ -93,11 +105,12 @@ def rank_candidates(candidates: list[dict], llm_results: dict[str, dict]) -> lis
         enriched = list(executor.map(_enrich_one, candidates))
 
     max_views = max((e["extracted_views"] for e in enriched), default=1)
+    max_duration = max((e.get("duration_sec") or 0 for e in enriched), default=1)
 
     scored = []
     for e in enriched:
         llm_score = llm_results.get(e["_id"])
-        scored.append(_score_video(e, max_views, llm_score))
+        scored.append(_score_video(e, max_views, max_duration, llm_score))
 
     scored.sort(key=lambda r: r["score"], reverse=True)
     return scored
