@@ -181,6 +181,11 @@
   color: #606060;
 }
 
+.ytf-runners-body {
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
 .ytf-runners-body.ytf-collapsed {
   display: none;
 }
