@@ -307,16 +307,30 @@
     loadAndRender();
   }
 
+  // Searching from YouTube's own search bar (as opposed to typing a new URL)
+  // navigates via history.pushState, not a full page load. yt-navigate-finish
+  // is supposed to cover this, but doesn't reliably fire for every in-page
+  // search-bar submission (confirmed: URL-bar reload always updated results,
+  // the on-page search box sometimes didn't) — patching pushState/replaceState
+  // directly catches every URL change regardless of how YouTube's own event
+  // dispatch behaves. Still no interval/polling: this only reacts to actual
+  // navigation calls, so it can't fire on its own without a real URL change.
+  function patchHistoryForSpaNav() {
+    for (const method of ["pushState", "replaceState"]) {
+      const original = history[method];
+      history[method] = function (...args) {
+        const result = original.apply(this, args);
+        onQueryChange();
+        return result;
+      };
+    }
+  }
+
   function init() {
     buildSidebar();
     onQueryChange();
 
-    // YouTube is a single-page app; navigating between searches doesn't
-    // always reload the page. yt-navigate-finish is YouTube's own SPA nav
-    // event. No polling fallback — a blind interval risks re-fetching (and
-    // re-spending API credits) if the URL is ever rewritten without a real
-    // query change; the loading/min-interval guards above are the actual
-    // safety net now, not a timer.
+    patchHistoryForSpaNav();
     document.addEventListener("yt-navigate-finish", onQueryChange);
     window.addEventListener("popstate", onQueryChange);
   }
