@@ -2,13 +2,13 @@
 Deterministic — no LLM call. Walks the syllabus in order and, per subtopic:
   - if the best-scoring candidate was already selected for an earlier
     subtopic, that step already covers this one too (dedup, no redundant entry)
-  - if the best candidate scores below GAP_SCORE_THRESHOLD, flag a gap
-    instead of padding the path with a weak result
+  - if no candidate was found at all, flag a gap (nothing to recommend)
+  - otherwise always includes the best-scoring candidate, even a weak one —
+    a low score still says something useful (see the step's own score/why),
+    and showing it beats silently dropping the subtopic from the path
   - prefers a candidate sharing the previous step's channel when scores are
     within 0.3 of each other (continuity of teaching style)
 """
-import config
-
 CHANNEL_TIE_MARGIN = 0.3
 
 
@@ -30,7 +30,7 @@ def assemble_path(subtopics: list[str], ranked_candidates: list[dict], ids_by_su
                     break
             continue
 
-        if not candidates or candidates[0]["score"] < config.GAP_SCORE_THRESHOLD:
+        if not candidates:
             gaps.append(subtopic)
             continue
 

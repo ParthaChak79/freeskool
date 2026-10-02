@@ -45,7 +45,6 @@ RECENCY_YEARS_DEFAULT = 3
 
 # Learning Path mode (instructions.md's Learning Path Feature)
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search
-GAP_SCORE_THRESHOLD = 6  # score < 6 -> flag subtopic as a gap rather than pad with a weak result
 
 # Per-candidate/per-subtopic SerpApi fetches (transcript, video_details,
 # subtopic search) were all sequential loops - a full 15-candidate Best Pick

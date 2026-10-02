@@ -59,7 +59,7 @@ Both `run_best_pick` and the shared `_run_path_based_mode` (used by both Learnin
 5. **Ranking** (`ranker/rank.py`) — enriches survivors with `video_details` (views/likes/subscribers via SerpApi `engine=youtube_video`) and computes a weighted final score (`VIDEO_WEIGHTS`: llm 0.50, views 0.15, like_ratio 0.15, recency 0.10, channel_authority 0.10). Formulas shared with the pre-filter live in `scorer/formulas.py`.
 6. **Mode-specific assembly**:
    - Best Pick: top-ranked candidate + up to 4 runners-up, with a deterministic (non-LLM) `why_best` explanation.
-   - Learning Path / Skill Mix: `learning_path/assembler.py` dedups a single video across subtopics and flags subtopics with no result scoring above `GAP_SCORE_THRESHOLD` as gaps rather than padding with a weak pick; `learning_path/path_ranker.py` generates a real LLM rationale per step.
+   - Learning Path / Skill Mix: `learning_path/assembler.py` dedups a single video across subtopics and always includes the best-scoring candidate per subtopic, even a weak one — a subtopic is only flagged as a gap if literally no candidate was found at all; `learning_path/path_ranker.py` generates a real LLM rationale per step.
 
 Topic decomposition differs by mode: `learning_path/decomposer.py` (ordered subtopics for a single skill) vs `skill_mix/decomposer.py` (detects whether a topic spans multiple distinct skill *domains* — deliberately biased toward NOT splitting single-coherent-skill topics; see the prompt's calibration examples). Both funnel into the same `_run_path_based_mode` in `main.py`.
 
