@@ -140,11 +140,15 @@ def _run_path_based_mode(topic: str, level: str, mode: str, decomp: dict) -> dic
         set_cached_path(cache_key, result)
         return result
 
+    # Relevance gate (optional, no-op if JEV_API_KEY unset) is applied inside
+    # search_all_subtopics, per subtopic — not here on the merged pool. See
+    # subtopic_search.py's comment: applying it globally across all
+    # subtopics' candidates combined could zero out an entire subtopic's
+    # small candidate set just because it scored lower than other subtopics',
+    # which was the real cause of gaps persisting even with decent
+    # candidates available.
     candidates_by_id, ids_by_subtopic = search_all_subtopics(subtopics)
     all_candidates = list(candidates_by_id.values())
-
-    # Relevance gate (optional, no-op if JEV_API_KEY unset) — see run_best_pick's comment.
-    all_candidates = filter_by_relevance(topic, all_candidates)
 
     llm_results = score_candidates(topic, all_candidates)
     ranked = rank_candidates(all_candidates, llm_results)

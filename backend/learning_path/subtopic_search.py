@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import config
 from fetcher.youtube_search import search_youtube
 from scorer.metadata_filter import prefilter_candidates
+from scorer.relevance_gate import filter_by_relevance
 
 
 def _candidate_id(c: dict) -> str:
@@ -35,10 +36,23 @@ def _build_search_query(subtopic: str) -> str:
 def _search_one_subtopic(subtopic: str) -> list[dict]:
     query = _build_search_query(subtopic)
     results = search_youtube(query)
-    return prefilter_candidates(
+    candidates = prefilter_candidates(
         results["videos"],
         top_n=config.LEARNING_PATH_CANDIDATES_PER_SUBTOPIC,
     )
+    # Relevance gate applied PER SUBTOPIC here, not on the merged pool in
+    # main.py — applying it globally across all subtopics' candidates
+    # combined let it wipe out a subtopic's entire (small, already only
+    # LEARNING_PATH_CANDIDATES_PER_SUBTOPIC-sized) candidate set whenever its
+    # candidates scored lower in Jev's judgment than other subtopics' — even
+    # if they were a perfectly fine pick on their own. Confirmed live: two
+    # subtopics with real, decent candidates (verified by re-running their
+    # searches directly) still ended up as gaps, because the gate had
+    # already dropped every one of their candidates before scoring ever saw
+    # them. Keep_n=1 still cuts real SerpApi spend (halves transcript +
+    # video_details fetches for this subtopic), but can never zero out the
+    # subtopic entirely the way the global pool-wide cut could.
+    return filter_by_relevance(subtopic, candidates, keep_n=config.LEARNING_PATH_RELEVANCE_KEEP_N)
 
 
 def search_all_subtopics(subtopics: list[str]) -> tuple[dict[str, dict], dict[str, list[str]]]:

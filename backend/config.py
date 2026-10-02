@@ -44,6 +44,16 @@ RECENCY_YEARS_DEFAULT = 3
 
 # Learning Path mode (instructions.md's Learning Path Feature)
 LEARNING_PATH_CANDIDATES_PER_SUBTOPIC = 2  # top N metadata-prefiltered candidates per subtopic search
+# Relevance gate keep_n for Learning Path/Skill Mix, applied PER SUBTOPIC
+# (see subtopic_search.py) rather than globally like RELEVANCE_GATE_KEEP_N
+# is for Best Pick. Deliberately small (1, not RELEVANCE_GATE_KEEP_N's 8):
+# applying the flat global keep_n across all subtopics' merged candidates
+# used to let it wipe out a whole subtopic's small candidate set whenever it
+# scored lower than other subtopics' — confirmed live as the real cause of
+# persistent "no strong tutorial found" gaps even where decent candidates
+# existed. 1 still cuts real SerpApi spend (halves transcript/video_details
+# fetches) without being able to zero out a subtopic entirely.
+LEARNING_PATH_RELEVANCE_KEEP_N = _int_env("LEARNING_PATH_RELEVANCE_KEEP_N", 1)
 
 # Per-candidate/per-subtopic SerpApi fetches (transcript, video_details,
 # subtopic search) were all sequential loops - a full 15-candidate Best Pick
