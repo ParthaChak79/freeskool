@@ -4,16 +4,26 @@ A Chrome extension that answers "what's the single best way to learn this topic 
 
 ## Setup
 
-### 1. Backend
+> ⚠️ **Cost note before you start**: every search against the running backend spends real SerpApi (and Gemini) credits — a single Best Pick search costs ~17+ SerpApi calls (1 search + 2 per surviving candidate), and Learning Path/Skill Mix cost more. SerpApi's free tier is 250 searches/month, which burns fast if you test all three modes repeatedly. Budget for that before testing.
+
+### 1. Clone and set up the backend
 
 ```bash
-cd backend
+git clone https://github.com/ParthaChak79/freeskool.git
+cd freeskool/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create `backend/.env` (already gitignored):
+### 2. Get API keys
+
+You need your own — none are committed to this repo:
+- **SerpApi key** — [serpapi.com](https://serpapi.com) (free tier: 250 searches/month)
+- **Gemini key** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+- **Jev key** (optional) — via [OpenRouter](https://openrouter.ai), only needed if you want the relevance-gate feature active (see "Relevance pre-filter" below); leave it unset and that feature is simply disabled
+
+### 3. Create `backend/.env`
 
 ```
 SERPAPI_API_KEY=your_serpapi_key
@@ -25,18 +35,16 @@ MAX_TRANSCRIPT_TOKENS=4000
 FETCH_CONCURRENCY=5
 RELEVANCE_GATE_KEEP_N=8
 BACKEND_URL=http://localhost:8000
-ALLOWED_ORIGINS=chrome-extension://YOUR_EXT_ID
+ALLOWED_ORIGINS=chrome-extension://YOUR_EXT_ID   # placeholder for now — comes from step 5
 ```
 
-Get a SerpApi key at [serpapi.com](https://serpapi.com) and a Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey). `JEV_API_KEY` is optional (see below) — leave it blank and that feature is simply disabled.
-
-Run it:
+### 4. Run the backend
 
 ```bash
 uvicorn main:app --reload
 ```
 
-Test it:
+Sanity-check it without the extension:
 
 ```bash
 curl -X POST http://localhost:8000/search \
@@ -44,14 +52,18 @@ curl -X POST http://localhost:8000/search \
   -d '{"query": "learn python", "mode": "best_pick", "level": "all"}'
 ```
 
-### 2. Chrome extension
+### 5. Load the Chrome extension
 
 1. Go to `chrome://extensions`, enable Developer Mode.
 2. Click "Load Unpacked", select the `extension/` folder.
-3. Click the extension icon → Settings, set "Backend URL" to wherever your backend is running (defaults to `http://localhost:8000`).
-4. Search anything on youtube.com — the sidebar appears on the results page.
+3. Chrome assigns the extension an ID (shown on its card on that page) — copy it, paste it into `backend/.env`'s `ALLOWED_ORIGINS` as `chrome-extension://<that_id>`, and **restart** uvicorn (not just let `--reload` pick it up — `python-dotenv` only loads `.env` once at process start, so `--reload`'s file-watching doesn't apply to it; a stale extension ID here is the most common setup snag, surfacing as a CORS "Failed to fetch" in the sidebar).
+4. Click the extension icon → Settings, confirm "Backend URL" is `http://localhost:8000` (or wherever your backend is running).
 
-No API keys ever live in the extension — all SerpApi and Gemini calls are server-side only, per instructions.md's Key Extension Constraints.
+No API keys ever live in the extension — all SerpApi, Gemini, and Jev calls are server-side only, per instructions.md's Key Extension Constraints.
+
+### 6. Test it
+
+Go to `youtube.com`, search anything from **YouTube's own search bar** (not the browser's URL bar), and the sidebar should appear on the results page with three tabs — **★ Best Pick**, **🗺 Path**, **🎯 Skill Mix**.
 
 ## Data source: SerpApi, not YouTube Data API v3
 

@@ -65,7 +65,19 @@ Topic decomposition differs by mode: `learning_path/decomposer.py` (ordered subt
 
 All per-candidate and per-subtopic SerpApi/LLM calls are parallelized with `ThreadPoolExecutor(max_workers=config.FETCH_CONCURRENCY)` — these are I/O-bound and were previously sequential loops that made a single search take 90+ seconds.
 
-Full-result caching: `cache/db.py` SQLite store, 30-day TTL, used for transcripts, LLM scores, video_details, and whole assembled paths (`path_cache_key` includes `mode` so Learning Path and Skill Mix don't collide on the same topic+level).
+Full-result caching: `cache/db.py` SQLite store (`backend/cache/cache.db`), 30-day TTL, used for transcripts, LLM scores, video_details (`video_cache` table, keyed by `video_id`), and whole assembled paths (`path_cache` table, keyed by `path_cache_key`, which includes `mode` so Learning Path and Skill Mix don't collide on the same topic+level).
+
+To debug a live result without spending new credits, inspect the cache directly — this was the fastest way to find several real bugs this session (stale/wiped-out rankings, relevance-gate side effects) without re-running a paid search:
+```bash
+cd backend && python3 -c "
+import sqlite3, json
+conn = sqlite3.connect('cache/cache.db')
+cur = conn.cursor()
+cur.execute(\"SELECT cache_key, result_json FROM path_cache\")
+for key, data in cur.fetchall():
+    print(key, '->', json.dumps(json.loads(data), indent=2)[:500])
+"
+```
 
 ### LLM provider
 
